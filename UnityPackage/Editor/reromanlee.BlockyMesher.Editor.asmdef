@@ -1,7 +1,11 @@
 {
     "name": "reromanlee.BlockyMesher.Editor",
     "rootNamespace": "reromanlee.BlockyMesher.Editor",
-    "references": [],
+    "references": [
+        "reromanlee.BlockyMesher",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
     "includePlatforms": [
         "Editor"
     ],

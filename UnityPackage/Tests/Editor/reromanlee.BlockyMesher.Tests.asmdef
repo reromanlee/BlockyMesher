@@ -3,6 +3,7 @@
     "rootNamespace": "reromanlee.BlockyMesher.Tests",
     "references": [
         "reromanlee.BlockyMesher",
+        "reromanlee.BlockyMesher.Editor",
         "Unity.Burst",
         "Unity.Collections",
         "Unity.Mathematics",
