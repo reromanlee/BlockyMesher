@@ -4,12 +4,14 @@ namespace reromanlee.BlockyMesher
 {
     public class BlockCollection
     {
-        public BlockCollection()
+        public BlockCollection(BlockData[] blockDataTable)
         {
+            this.blockDataTable = blockDataTable;
             directMapping = GenerateDirectMapping();
             blockDictionary = new();
         }
 
+        private readonly BlockData[] blockDataTable;
         private readonly DirectMapping[] directMapping;
         private readonly Dictionary<int, RuntimeBlock[]> blockDictionary;
 
@@ -49,7 +51,7 @@ namespace reromanlee.BlockyMesher
                 return;
             }
             RuntimeBlock[] blockArray = new RuntimeBlock[Tables.blockLengthXYZ];
-            BlockData blockData = Tables.blockData[defaultBlockID];
+            BlockData blockData = blockDataTable[defaultBlockID];
             for (int x = 0; x < Tables.blockLengthXYZ; x++)
             {
                 blockArray[x] = new(blockData);
@@ -66,7 +68,7 @@ namespace reromanlee.BlockyMesher
             RuntimeBlock[] blockArray = new RuntimeBlock[Tables.blockLengthXYZ];
             for (int x = 0; x < Tables.blockLengthXYZ; x++)
             {
-                BlockData blockData = Tables.blockData[blockIDs[x]];
+                BlockData blockData = blockDataTable[blockIDs[x]];
                 blockArray[x] = new(blockData);
             }
             blockDictionary[chunkAddress] = blockArray;

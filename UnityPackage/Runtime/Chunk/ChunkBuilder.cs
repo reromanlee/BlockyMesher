@@ -7,9 +7,14 @@ namespace reromanlee.BlockyMesher
 {
     public class ChunkBuilder
     {
-        public ChunkBuilder()
+        private readonly Material blockMaterial;
+        private readonly BlockData[] blockDataTable;
+
+        public ChunkBuilder(Material blockMaterial, BlockData[] blockDataTable)
         {
-            blockCollection = new();
+            this.blockMaterial = blockMaterial;
+            this.blockDataTable = blockDataTable;
+            blockCollection = new(blockDataTable);
             chunkCollection = new();
             // Create array pools for memory management.
             integerPool = ArrayPool<int>.Shared;
@@ -46,7 +51,7 @@ namespace reromanlee.BlockyMesher
             // Avoid duplicate chunks.
             if (chunkCollection.ContainsKey(chunkAddress)) return;
             // Create a new chunk game object.
-            ChunkRenderer chunkRenderer = new(chunkAddress, parent);
+            ChunkRenderer chunkRenderer = new(chunkAddress, parent, blockMaterial);
             chunkCollection[chunkAddress] = chunkRenderer;
             // Initialize chunk matrix with specified block type.
             blockCollection.InitializeWithSurrounding(chunkAddress, defaultBlockID);

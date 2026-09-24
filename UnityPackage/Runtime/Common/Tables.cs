@@ -7,7 +7,6 @@ namespace reromanlee.BlockyMesher
         static Tables()
         {
             cubeCases = GenerateCubeCases();
-            blockData = GenerateBlockData();
             mappingSurroundingNeighbors = GenerateMappingSurroundingNeighbors();
             chunkSurroundingNeighbors = GenerateChunkSurroundingNeighbors();
             mappingFacingNeighbors = GenerateMappingFacingNeighbors();
@@ -276,15 +275,6 @@ namespace reromanlee.BlockyMesher
                 cubeCases[x] = new CubeCase(x, cubeVertices, cubeFaces);
             }
             return cubeCases;
-        }
-
-        // ########## BLOCK DATA ##########
-
-        public static BlockData[] blockData;
-
-        private static BlockData[] GenerateBlockData()
-        {
-            return Resources.LoadAll<BlockData>("BlockData");
         }
 
         // ########## MAPPING SURROUNDING NEIGHBORS ##########

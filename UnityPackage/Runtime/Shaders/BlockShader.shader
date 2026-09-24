@@ -1,4 +1,4 @@
-Shader "romanlee17/MarchingCubes/BlockShader" {
+Shader "reromanlee/BlockyMesher/BlockShader" {
 
     Properties {
         _BlocksTexture ("Blocks (RGB)", 2D) = "white" { }

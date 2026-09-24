@@ -4,7 +4,7 @@ namespace reromanlee.BlockyMesher
 {
     public class ChunkRenderer
     {
-        public ChunkRenderer(int chunkAddress, Transform chunkParent)
+        public ChunkRenderer(int chunkAddress, Transform chunkParent, Material blockMaterial)
         {
             int x = Tables.ChunkAddressToX(chunkAddress);
             int y = Tables.ChunkAddressToY(chunkAddress);
@@ -26,7 +26,7 @@ namespace reromanlee.BlockyMesher
             meshFilter.sharedMesh = mesh;
             // Initialize mesh renderer component.
             MeshRenderer meshRenderer = gameObject.AddComponent<MeshRenderer>();
-            meshRenderer.sharedMaterial = Resources.Load<Material>("Materials/BlockMaterial");
+            meshRenderer.sharedMaterial = blockMaterial;
             // Initialize mesh collider component.
             meshCollider = gameObject.AddComponent<MeshCollider>();
             meshCollider.sharedMesh = mesh;
