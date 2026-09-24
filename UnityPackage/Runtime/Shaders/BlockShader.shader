@@ -25,6 +25,7 @@ Shader "reromanlee/BlockyMesher/Blocks"
             half _OcclusionStrength;
             half _MinimumLight;
             half _Cutoff;
+            float4 _Occlusion_TexelSize;
         CBUFFER_END
 
         TEXTURE2D_ARRAY(_Textures);
@@ -100,7 +101,9 @@ Shader "reromanlee/BlockyMesher/Blocks"
                 #if defined(_ALPHATEST_ON)
                     clip(albedo.a - _Cutoff);
                 #endif
-                half occlusion = SAMPLE_TEXTURE2D_ARRAY(_Occlusion, sampler_Occlusion, input.uv, input.layers.y).r;
+                // Inset by half a texel: the tiles' edge texels lie exactly on the face's edges.
+                float2 occlusionUV = input.uv * (1.0 - _Occlusion_TexelSize.xy) + 0.5 * _Occlusion_TexelSize.xy;
+                half occlusion = SAMPLE_TEXTURE2D_ARRAY(_Occlusion, sampler_Occlusion, occlusionUV, input.layers.y).r;
                 half3 color = albedo.rgb * input.light * lerp(1.0h, occlusion, _OcclusionStrength);
                 return half4(MixFog(color, input.fogFactor), albedo.a);
             }

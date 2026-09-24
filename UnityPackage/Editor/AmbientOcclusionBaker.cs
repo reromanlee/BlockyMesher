@@ -16,39 +16,67 @@ namespace reromanlee.BlockyMesher.Editor
         public const int TileSize = 16;
         public const int Columns = 16;
 
-        /// <summary>How dark the shadow is right against a solid block: 0 is none, 1 is black.</summary>
+        /// <summary>How dark the shadow is at the foot of a long wall: 0 is none, 1 is black. Corners where walls meet get darker.</summary>
         public static float Strength = 0.6f;
 
-        /// <summary>How far a shadow reaches across the face, as a fraction of its width. At most 1, see <see cref="Sample"/>.</summary>
+        /// <summary>How far a shadow reaches across the face, as a fraction of its width. Kept below 1, see <see cref="Sample"/>.</summary>
         public static float Radius = 0.9f;
 
+        const int Steps = 32;
+        static float normalizedRadius = -1;
+        static float halfDiskWeight;
+
         /// <summary>
-        /// Brightness at a point (u, v) of a face, 1 being fully lit. Every solid block beside the face
-        /// shades the edge it touches; a solid block at a diagonal shades its corner, unless an edge
-        /// block already shades that corner. Shadows never reach further than one face, so two faces
-        /// side by side see the same blocks along their shared edge and blend without a seam.
+        /// Brightness at a point (u, v) of a face, 1 being fully lit. Each solid block around the face
+        /// covers the unit square next to it in the face's plane, and the shadow at a point is how
+        /// much of a small disk around it those squares cover, weighted toward the middle. So shadows
+        /// are darkest where blocks meet around a point and fade out where a neighbor block ends.
+        /// The disk is smaller than a face, so two faces side by side see the same blocks along their
+        /// shared edge and blend without a seam.
         /// </summary>
         public static float Sample(int occlusionCase, float u, float v)
         {
-            bool Solid(int bit) => (occlusionCase & (1 << bit)) != 0;
-            bool left = Solid(3), right = Solid(4), bottom = Solid(1), top = Solid(6);
-
-            float light = 1;
-            if (left) light *= 1 - Shadow(u);
-            if (right) light *= 1 - Shadow(1 - u);
-            if (bottom) light *= 1 - Shadow(v);
-            if (top) light *= 1 - Shadow(1 - v);
-            if (Solid(0) && !left && !bottom) light *= 1 - Shadow(math.length(new float2(u, v)));
-            if (Solid(2) && !right && !bottom) light *= 1 - Shadow(math.length(new float2(1 - u, v)));
-            if (Solid(5) && !left && !top) light *= 1 - Shadow(math.length(new float2(u, 1 - v)));
-            if (Solid(7) && !right && !top) light *= 1 - Shadow(math.length(new float2(1 - u, 1 - v)));
-            return light;
+            float radius = math.min(Radius, 0.99f);
+            float covered = 0;
+            for (int j = 0; j < Steps; j++)
+            for (int i = 0; i < Steps; i++)
+            {
+                float2 offset = (new float2(i, j) + 0.5f) * (2 * radius / Steps) - radius;
+                float weight = Kernel(math.length(offset), radius);
+                if (weight > 0 && IsSolid(occlusionCase, new float2(u, v) + offset))
+                    covered += weight;
+            }
+            return math.saturate(1 - Strength * covered / HalfDiskWeight(radius));
         }
 
-        static float Shadow(float distance)
+        static float Kernel(float distance, float radius)
         {
-            float t = math.saturate(1 - distance / Radius);
-            return Strength * t * t;
+            float t = math.saturate(1 - distance / radius);
+            return t * t;
+        }
+
+        /// <summary>The weight a straight wall covers at its foot, which is what <see cref="Strength"/> refers to.</summary>
+        static float HalfDiskWeight(float radius)
+        {
+            if (normalizedRadius == radius)
+                return halfDiskWeight;
+            halfDiskWeight = 0;
+            for (int j = 0; j < Steps; j++)
+            for (int i = Steps / 2; i < Steps; i++)
+                halfDiskWeight += Kernel(math.length((new float2(i, j) + 0.5f) * (2 * radius / Steps) - radius), radius);
+            normalizedRadius = radius;
+            return halfDiskWeight;
+        }
+
+        /// <summary>Whether a point of the face's plane lies over a solid block. The face's own front block is always open.</summary>
+        static bool IsSolid(int occlusionCase, float2 point)
+        {
+            int du = (int)math.floor(point.x);
+            int dv = (int)math.floor(point.y);
+            if ((du == 0 && dv == 0) || du < -1 || du > 1 || dv < -1 || dv > 1)
+                return false;
+            int index = (dv + 1) * 3 + du + 1;
+            return (occlusionCase & (1 << (index < 4 ? index : index - 1))) != 0;
         }
 
         /// <summary>Tile of a case inside the baked PNG, in pixels from its top-left corner.</summary>
@@ -65,7 +93,9 @@ namespace reromanlee.BlockyMesher.Editor
                 for (int y = 0; y < TileSize; y++)
                 for (int x = 0; x < TileSize; x++)
                 {
-                    float brightness = Sample(occlusionCase, (x + 0.5f) / TileSize, (y + 0.5f) / TileSize);
+                    // Edge texels sit exactly on the face's edges (the shader samples inset by half a
+                    // texel), so both faces along a shared edge read the very same values there.
+                    float brightness = Sample(occlusionCase, x / (TileSize - 1f), y / (TileSize - 1f));
                     byte value = (byte)math.round(brightness * 255);
 
                     // Texture rows run bottom to top, the tile grid top to bottom.

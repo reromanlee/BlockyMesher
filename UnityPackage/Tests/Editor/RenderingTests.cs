@@ -43,10 +43,32 @@ namespace reromanlee.BlockyMesher.Tests
         public void OpenFacesAreFullyLitAndSolidEdgesDarken()
         {
             Assert.AreEqual(1f, AmbientOcclusionBaker.Sample(0, 0.01f, 0.01f), 1e-4f);
-            Assert.Less(AmbientOcclusionBaker.Sample(1 << 3, 0.01f, 0.5f), 0.6f, "left edge");
+            Assert.Less(AmbientOcclusionBaker.Sample(1 << 3, 0.01f, 0.5f), 0.7f, "left edge");
             Assert.AreEqual(1f, AmbientOcclusionBaker.Sample(1 << 3, 0.99f, 0.5f), 1e-4f, "the shadow ends before the other edge");
             float innerCorner = AmbientOcclusionBaker.Sample(1 << 3 | 1 << 1, 0.01f, 0.01f);
             Assert.Less(innerCorner, AmbientOcclusionBaker.Sample(1 << 3, 0.01f, 0.01f), "two edges darken more than one");
+        }
+
+        [Test]
+        public void ShadowsFadeWhereTheNeighborBlockEnds()
+        {
+            const int right = 1 << 4, topRight = 1 << 7, bottomRow = 1 << 0 | 1 << 1 | 1 << 2;
+            float middle = AmbientOcclusionBaker.Sample(right, 0.97f, 0.5f);
+            float end = AmbientOcclusionBaker.Sample(right, 0.97f, 0.97f);
+            float continued = AmbientOcclusionBaker.Sample(right | topRight, 0.97f, 0.97f);
+            Assert.Greater(end, middle + 0.05f, "a single block's shadow fades toward its end");
+            Assert.Less(continued, end - 0.05f, "a wall that goes on keeps its shadow");
+
+            // A block beside the face, standing on a floor: darkest where the three meet.
+            float corner = AmbientOcclusionBaker.Sample(right | bottomRow, 0.97f, 0.03f);
+            Assert.Less(corner, AmbientOcclusionBaker.Sample(bottomRow, 0.5f, 0.03f));
+            Assert.Less(corner, AmbientOcclusionBaker.Sample(right | bottomRow, 0.97f, 0.97f));
+        }
+
+        [Test]
+        public void ADiagonalBlockShadesLessThanAnEdgeBlock()
+        {
+            Assert.Greater(AmbientOcclusionBaker.Sample(1 << 7, 0.97f, 0.97f), AmbientOcclusionBaker.Sample(1 << 4, 0.97f, 0.5f));
         }
 
         [Test]
@@ -64,7 +86,7 @@ namespace reromanlee.BlockyMesher.Tests
                     for (int y = 0; y < 16; y += 5)
                     for (int x = 0; x < 16; x += 5)
                     {
-                        float expected = AmbientOcclusionBaker.Sample(occlusionCase, (x + 0.5f) / 16, (y + 0.5f) / 16);
+                        float expected = AmbientOcclusionBaker.Sample(occlusionCase, x / 15f, y / 15f);
                         Assert.AreEqual(expected, png.GetPixel(origin.x + x, textureY + y).r, 1 / 255f + 1e-4f, $"case {occlusionCase} at {x}, {y}");
                     }
                 }
