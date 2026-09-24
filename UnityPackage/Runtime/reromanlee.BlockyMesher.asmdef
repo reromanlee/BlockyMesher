@@ -1,7 +1,11 @@
 {
     "name": "reromanlee.BlockyMesher",
     "rootNamespace": "reromanlee.BlockyMesher",
-    "references": [],
+    "references": [
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
