@@ -63,6 +63,8 @@ namespace reromanlee.BlockyMesher
         readonly HashSet<int2> candidateSet = new();
         readonly List<float> scores = new();
         readonly List<int2> farColumns = new();
+        HashSet<int2> viewColumns = new();
+        HashSet<int2> nextViewColumns = new();
         HashSet<int2> physicsColumns = new();
         HashSet<int2> nextPhysicsColumns = new();
         readonly List<float3> foci = new();
@@ -177,6 +179,7 @@ namespace reromanlee.BlockyMesher
             generating.Clear();
             while (free.Count > 0)
                 free.Pop().Dispose();
+            viewColumns.Clear();
             landscape.BlockChanged -= OnBlockChanged;
             landscape.AreaChanged -= OnAreaChanged;
             landscape.ShuttingDown -= CancelGenerations;
@@ -203,6 +206,7 @@ namespace reromanlee.BlockyMesher
 
             FinishGenerations(false);
             UnloadFarColumns();
+            UpdateViewColumns();
             StartGenerations();
             UpdatePhysicsColumns();
             TrimWhenIdle();
@@ -269,7 +273,7 @@ namespace reromanlee.BlockyMesher
 
         bool CanBuild(int2 column)
         {
-            if (ColumnDistance(column) > viewRadius)
+            if (!viewColumns.Contains(column))
                 return false;
             // Meshes read 8 blocks into each neighbor, so all eight must be loaded.
             BlockStorage storage = landscape.Storage;
@@ -283,6 +287,28 @@ namespace reromanlee.BlockyMesher
         }
 
         bool WantsColliders(int2 column) => ColumnDistance(column) <= physicsRadius;
+
+        /// <summary>
+        /// Loaded columns within the view radius get meshes. Columns also load a little beyond it, so
+        /// one coming into view is queued for building: it may have loaded while still too far to
+        /// show. One going out of view is queued too, which drops its meshes. Half a column of slack
+        /// keeps a player at the edge from rebuilding it over and over.
+        /// </summary>
+        void UpdateViewColumns()
+        {
+            nextViewColumns.Clear();
+            foreach (Column column in landscape.Storage.Columns)
+            {
+                float distance = ColumnDistance(column.Position);
+                if (distance <= viewRadius || (distance <= viewRadius + 0.5f && viewColumns.Contains(column.Position)))
+                    nextViewColumns.Add(column.Position);
+            }
+            foreach (int2 column in nextViewColumns)
+                if (!viewColumns.Contains(column)) MarkColumnDirty(column);
+            foreach (int2 column in viewColumns)
+                if (!nextViewColumns.Contains(column)) MarkColumnDirty(column);
+            (viewColumns, nextViewColumns) = (nextViewColumns, viewColumns);
+        }
 
         void StartGenerations()
         {
@@ -419,6 +445,7 @@ namespace reromanlee.BlockyMesher
                 edits.Unloading(storage, column);
             storage.RemoveColumn(position);
             landscape.Builder.RemoveColumn(position);
+            viewColumns.Remove(position);
             physicsColumns.Remove(position);
         }
 

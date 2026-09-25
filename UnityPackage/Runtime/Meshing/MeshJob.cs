@@ -132,15 +132,15 @@ namespace reromanlee.BlockyMesher.Meshing
             {
                 int2 uv = FaceFrame.Corner(corner);
                 int3 position = local + frame.Origin + uv.x * frame.U + uv.y * frame.V;
-                CornerLight(cell, front, uv.x == 0 ? -stepU : stepU, uv.y == 0 ? -stepV : stepV, out int sky, out int blockLight);
-                brightness[corner] = sky + (blockLight & 7);
+                CornerLight(cell, front, uv.x == 0 ? -stepU : stepU, uv.y == 0 ? -stepV : stepV, out int sky, out int level, out Color32 blockLight);
+                brightness[corner] = sky + level;
                 vertices[firstVertex + corner] = new SectionVertex
                 {
                     X = (byte)position.x,
                     Y = (byte)position.y,
                     Z = (byte)position.z,
                     Corner = (byte)(uv.x | (uv.y << 1)),
-                    BlockLight = Tint(blockLight),
+                    BlockLight = blockLight,
                     Layer = layer,
                     Occlusion = occlusion,
                     Sky = (byte)sky,
@@ -162,38 +162,57 @@ namespace reromanlee.BlockyMesher.Meshing
         /// <summary>
         /// Smooth lighting: the brightest of the front block and the blocks around this corner that
         /// light can reach it from (see <see cref="LightConnections"/>). Flat lighting: the front block.
+        /// Block light of a different color that is just as bright mixes in, so every face sharing the
+        /// corner lights it the same, instead of each keeping the color of its own front block.
         /// </summary>
-        void CornerLight(int cell, int front, int towardU, int towardV, out int sky, out int blockLight)
+        void CornerLight(int cell, int front, int towardU, int towardV, out int sky, out int level, out Color32 blockLight)
         {
-            sky = Sky[front];
-            blockLight = BlockLight[front];
-            if (!SmoothLighting)
-                return;
+            sky = 0;
+            level = 0;
+            int3 colors = 0;
+            int count = 0;
+            Brightest(front, ref sky, ref level, ref colors, ref count);
+            if (SmoothLighting)
+            {
+                int frontU = front + towardU;
+                int frontV = front + towardV;
+                int ownU = cell + towardU;
+                int ownV = cell + towardV;
+                int frontUV = frontU + towardV;
+                int ownUV = ownU + towardV;
+                int passable = PassesLight(frontU) | (PassesLight(frontV) << 1) | (PassesLight(ownU) << 2)
+                    | (PassesLight(ownV) << 3) | (PassesLight(frontUV) << 4) | (PassesLight(ownUV) << 5);
 
-            int frontU = front + towardU;
-            int frontV = front + towardV;
-            int ownU = cell + towardU;
-            int ownV = cell + towardV;
-            int frontUV = frontU + towardV;
-            int ownUV = ownU + towardV;
-            int passable = PassesLight(frontU) | (PassesLight(frontV) << 1) | (PassesLight(ownU) << 2)
-                | (PassesLight(ownV) << 3) | (PassesLight(frontUV) << 4) | (PassesLight(ownUV) << 5);
+                int connected = LightConnections.Table[passable];
+                if ((connected & 1) != 0) Brightest(frontU, ref sky, ref level, ref colors, ref count);
+                if ((connected & 2) != 0) Brightest(frontV, ref sky, ref level, ref colors, ref count);
+                if ((connected & 4) != 0) Brightest(ownU, ref sky, ref level, ref colors, ref count);
+                if ((connected & 8) != 0) Brightest(ownV, ref sky, ref level, ref colors, ref count);
+                if ((connected & 16) != 0) Brightest(frontUV, ref sky, ref level, ref colors, ref count);
+                if ((connected & 32) != 0) Brightest(ownUV, ref sky, ref level, ref colors, ref count);
+            }
 
-            int connected = LightConnections.Table[passable];
-            if ((connected & 1) != 0) Brightest(frontU, ref sky, ref blockLight);
-            if ((connected & 2) != 0) Brightest(frontV, ref sky, ref blockLight);
-            if ((connected & 4) != 0) Brightest(ownU, ref sky, ref blockLight);
-            if ((connected & 8) != 0) Brightest(ownV, ref sky, ref blockLight);
-            if ((connected & 16) != 0) Brightest(frontUV, ref sky, ref blockLight);
-            if ((connected & 32) != 0) Brightest(ownUV, ref sky, ref blockLight);
+            // The average color of the brightest blocks, scaled by how bright they are.
+            int3 color = count > 0 ? colors * level / (count * LightJob.MaxLevel) : 0;
+            blockLight = new Color32((byte)color.x, (byte)color.y, (byte)color.z, (byte)(count > 0 ? 255 : 0));
         }
 
-        void Brightest(int cell, ref int sky, ref int blockLight)
+        void Brightest(int cell, ref int sky, ref int level, ref int3 colors, ref int count)
         {
             sky = math.max(sky, Sky[cell]);
-            int candidate = BlockLight[cell];
-            if ((candidate & 7) > (blockLight & 7))
-                blockLight = candidate;
+            int light = BlockLight[cell];
+            int candidate = light & 7;
+            if (candidate == 0 || candidate < level)
+                return;
+            if (candidate > level)
+            {
+                level = candidate;
+                colors = 0;
+                count = 0;
+            }
+            Color32 color = LightColors[math.min(light >> 3, LightColors.Length - 1)];
+            colors += new int3(color.r, color.g, color.b);
+            count++;
         }
 
         /// <summary>
@@ -210,15 +229,6 @@ namespace reromanlee.BlockyMesher.Meshing
                 | (IsOpaque(front - stepU + stepV) << 5)
                 | (IsOpaque(front + stepV) << 6)
                 | (IsOpaque(front + stepU + stepV) << 7));
-        }
-
-        Color32 Tint(int blockLight)
-        {
-            int level = blockLight & 7;
-            if (level == 0)
-                return default;
-            Color32 color = LightColors[math.min(blockLight >> 3, LightColors.Length - 1)];
-            return new Color32((byte)(color.r * level / 7), (byte)(color.g * level / 7), (byte)(color.b * level / 7), 255);
         }
 
         int PassesLight(int cell) => (Flags[cell] & (byte)BlockFlags.LightPasses) != 0 ? 1 : 0;

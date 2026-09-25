@@ -47,8 +47,10 @@ namespace reromanlee.BlockyMesher
         [Tooltip("Crack stages, lightest first, as a 2D array. Filled in automatically.")]
         public Texture2DArray cracks;
 
-        Material[] materials;
-        readonly Material[][] materialsByPasses = new Material[8][];
+        // Unity also saves private fields when it reloads scripts, on entering and leaving Play Mode,
+        // and would hand these back as empty arrays: renderers would get no materials and vanish.
+        [System.NonSerialized] Material[] materials;
+        [System.NonSerialized] readonly Material[][] materialsByPasses = new Material[8][];
 
         /// <summary>Lists everything that would make blocks render or save incorrectly. Empty when valid.</summary>
         public List<string> Validate()
@@ -142,16 +144,14 @@ namespace reromanlee.BlockyMesher
         /// <summary>The shared material for one render pass, created on first use.</summary>
         internal Material GetMaterial(RenderPass pass)
         {
-            if (materials == null)
-                CreateMaterials();
+            EnsureMaterials();
             return materials[(int)pass];
         }
 
         /// <summary>Materials for a mesh whose submeshes are the passes in <paramref name="passMask"/>, in pass order.</summary>
         internal Material[] GetMaterials(int passMask)
         {
-            if (materials == null)
-                CreateMaterials();
+            EnsureMaterials();
             if (materialsByPasses[passMask] == null)
             {
                 var list = new List<Material>();
@@ -162,8 +162,12 @@ namespace reromanlee.BlockyMesher
             return materialsByPasses[passMask];
         }
 
-        void CreateMaterials()
+        /// <summary>Creates the materials on first use, and again if something destroyed them.</summary>
+        void EnsureMaterials()
         {
+            if (materials != null && materials[0] != null)
+                return;
+            System.Array.Clear(materialsByPasses, 0, materialsByPasses.Length);
             if (shader == null)
             {
                 shader = Shader.Find(ShaderName);
