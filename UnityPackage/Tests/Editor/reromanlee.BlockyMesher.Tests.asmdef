@@ -4,6 +4,7 @@
     "references": [
         "reromanlee.BlockyMesher",
         "reromanlee.BlockyMesher.Editor",
+        "reromanlee.BlockyMesher.Generation",
         "Unity.Burst",
         "Unity.Collections",
         "Unity.Mathematics",

@@ -180,6 +180,64 @@ namespace reromanlee.BlockyMesher.Storage
             return true;
         }
 
+        /// <summary>Adds a generated column, section by section, as <see cref="ColumnSummaryJob"/> summed it up.</summary>
+        public Column LoadColumn(int2 position, NativeArray<ushort> blocks, NativeArray<int> uniformIds, NativeArray<ushort> skyStart)
+        {
+            Column column = AddColumn(position);
+            for (int i = 0; i < SectionsPerColumn; i++)
+            {
+                ref SectionBlocks section = ref column.Sections[i];
+                if (uniformIds[i] >= 0)
+                {
+                    MakeUniform(ref section, (ushort)uniformIds[i]);
+                    continue;
+                }
+                if (section.IsUniform)
+                    MakeMixed(ref section, false);
+                NativeArray<ushort>.Copy(blocks, i * Section.Volume, section.Blocks, 0, Section.Volume);
+            }
+            NativeArray<ushort>.Copy(skyStart, column.SkyStart);
+            return column;
+        }
+
+        /// <summary>Overwrites a whole section. The sky start is left alone: recompute it once afterwards.</summary>
+        public void ReplaceSection(Column column, int sectionIndex, ReadOnlySpan<ushort> blocks)
+        {
+            ref SectionBlocks section = ref column.Sections[sectionIndex];
+            ushort first = blocks[0];
+            bool uniform = true;
+            for (int i = 1; i < blocks.Length && uniform; i++)
+                uniform = blocks[i] == first;
+            if (uniform)
+            {
+                MakeUniform(ref section, first);
+                return;
+            }
+            if (section.IsUniform)
+                MakeMixed(ref section, false);
+            blocks.CopyTo(section.Blocks.AsSpan());
+        }
+
+        /// <summary>Sets one block of a section. The sky start is left alone: recompute it once afterwards.</summary>
+        public void SetInSection(Column column, int sectionIndex, int blockIndex, ushort id)
+        {
+            ref SectionBlocks section = ref column.Sections[sectionIndex];
+            if (section[blockIndex] == id)
+                return;
+            if (section.IsUniform)
+                MakeMixed(ref section);
+            section.Blocks[blockIndex] = id;
+        }
+
+        public void CopySection(Column column, int sectionIndex, Span<ushort> destination)
+        {
+            SectionBlocks section = column.Sections[sectionIndex];
+            if (section.IsUniform)
+                destination.Fill(section.UniformId);
+            else
+                section.Blocks.AsReadOnlySpan().CopyTo(destination);
+        }
+
         public void RecomputeSkyStart(Column column)
         {
             for (int z = 0; z < Section.Size; z++)
@@ -225,12 +283,12 @@ namespace reromanlee.BlockyMesher.Storage
             return 0;
         }
 
-        void MakeMixed(ref SectionBlocks section)
+        void MakeMixed(ref SectionBlocks section, bool fill = true)
         {
             NativeArray<ushort> blocks = freeArrays.Count > 0
                 ? freeArrays.Pop()
                 : new NativeArray<ushort>(Section.Volume, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-            for (int i = 0; i < Section.Volume; i++)
+            for (int i = 0; fill && i < Section.Volume; i++)
                 blocks[i] = section.UniformId;
             section.Blocks = blocks;
             MixedSectionCount++;

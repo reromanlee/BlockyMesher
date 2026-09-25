@@ -46,9 +46,14 @@ namespace reromanlee.BlockyMesher
 
         public BuildSettings Settings;
         public ColliderMode Colliders;
-        public Func<int2, bool> WantsColliders = _ => true;
         public float BudgetMs = 4;
         public float3 Focus;
+
+        /// <summary>Which columns may be built; all when null. A streamer waits until a column's neighbors are loaded.</summary>
+        public Func<int2, bool> CanBuild;
+
+        /// <summary>Which columns get colliders; all when null. A streamer limits them to the area around the player.</summary>
+        public Func<int2, bool> WantsColliders;
 
         public SectionBuilder(Transform parent, BlockStorage storage, BlockTable table, BlockRegistry registry)
         {
@@ -220,14 +225,15 @@ namespace reromanlee.BlockyMesher
 
         void Start(int3 section)
         {
-            if (!NeedsBuild(section))
+            if (!NeedsBuild(section) || (CanBuild != null && !CanBuild(section.xz)))
             {
                 Release(section);
                 return;
             }
             SectionBuild build = freeBuilds.Count > 0 ? freeBuilds.Pop() : new SectionBuild();
             build.CopyInputs(storage, section.xz, section.y);
-            ColliderMode colliders = Colliders != ColliderMode.None && WantsColliders(section.xz) ? Colliders : ColliderMode.None;
+            bool wantsColliders = WantsColliders == null || WantsColliders(section.xz);
+            ColliderMode colliders = wantsColliders ? Colliders : ColliderMode.None;
             build.Schedule(table, Settings, colliders);
             running.Add(new Running { Section = section, Build = build });
         }

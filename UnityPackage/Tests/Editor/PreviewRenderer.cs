@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using NUnit.Framework;
+using reromanlee.BlockyMesher.Generation;
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -25,6 +26,14 @@ namespace reromanlee.BlockyMesher.Tests
         static readonly Color Sky = new(0.55f, 0.72f, 0.95f);
 
         readonly List<Object> created = new();
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (Object item in created)
+                if (item != null) Object.DestroyImmediate(item);
+            created.Clear();
+        }
 
         [Test]
         public void RenderPreviews()
@@ -65,9 +74,97 @@ namespace reromanlee.BlockyMesher.Tests
             Render(folder, "crack", new Vector3(-20.8f, 11.2f, -21.2f), new Vector3(-18.5f, 9.5f, -18.5f));
             Render(folder, "ao", new Vector3(-21, 15, -24), new Vector3(-16, 9, -16));
             Debug.Log($"Previews written to {folder}");
+        }
 
-            foreach (Object item in created)
-                Object.DestroyImmediate(item);
+        [Test]
+        public void RenderStreamedTerrain()
+        {
+            if (GraphicsSettings.currentRenderPipeline == null)
+                Assert.Ignore("The previews need URP as the active render pipeline.");
+
+            EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = Sky;
+            RenderSettings.fogStartDistance = 50;
+            RenderSettings.fogEndDistance = 100;
+            BlockLighting.SkyColor = new Color(1f, 0.97f, 0.9f);
+
+            BlockRegistry registry = CreateRegistry();
+            var terrain = ScriptableObject.CreateInstance<NoiseTerrainStep>();
+            created.Add(terrain);
+            terrain.surface = registry.blocks[Grass - 1];
+            terrain.subsurface = registry.blocks[Dirt - 1];
+            terrain.stone = registry.blocks[Stone - 1];
+            terrain.baseHeight = 40;
+            terrain.amplitude = 18;
+            terrain.scale = 80;
+            terrain.caves = true;
+            var generator = ScriptableObject.CreateInstance<TerrainGenerator>();
+            created.Add(generator);
+            generator.steps = new GenerationStep[] { terrain };
+            generator.seed = 12345;
+
+            var world = new GameObject("Streamed World");
+            created.Add(world);
+            var landscape = world.AddComponent<Landscape>();
+            landscape.Registry = registry;
+            landscape.SectionsPerColumn = 6;
+            landscape.SolidBelowWorld = true;
+            var streamer = world.AddComponent<LandscapeStreamer>();
+            streamer.Generator = generator;
+            streamer.ViewRadius = 6;
+            var player = new GameObject("Player");
+            created.Add(player);
+            player.transform.position = new Vector3(8, 70, 8);
+            streamer.FocusPoints.Add(player.transform);
+            streamer.Attach();
+            try
+            {
+                var watch = Stopwatch.StartNew();
+                streamer.LoadEverything();
+                Debug.Log($"Streamed {streamer.LoadedColumnCount} columns and built {landscape.Builder.BuildsFinished} sections " +
+                    $"in {watch.ElapsedMilliseconds} ms, generation included; {landscape.Builder.Objects.Count} sections have a mesh");
+
+                string folder = Path.GetFullPath("BlockyMesherPreviews");
+                Directory.CreateDirectory(folder);
+                Render(folder, "streamed", new Vector3(8, 80, 8), new Vector3(60, 45, 70));
+                Vector3Int ground = new Vector3Int(8, landscape.Height - 1, 8);
+                while (ground.y > 0 && landscape.GetBlock(ground) == 0) ground.y--;
+                Render(folder, "streamed-ground", ground + new Vector3(0.5f, 2.7f, 0.5f), ground + new Vector3(40, 4, 25));
+
+                // Find a cave near the player, light it with a lamp, and look into it.
+                if (FindCave(landscape, out Vector3Int cave))
+                {
+                    landscape.SetBlock(cave + new Vector3Int(2, 0, 0), WarmLamp);
+                    landscape.CompleteRebuilds();
+                    Render(folder, "cave", cave + new Vector3(-1.5f, 0.6f, 0.5f), cave + new Vector3(3, 0, 0.5f));
+                }
+                Debug.Log($"Previews written to {folder}");
+            }
+            finally
+            {
+                streamer.Detach();
+            }
+        }
+
+        /// <summary>An air block well below the surface with room around it, near the world's origin.</summary>
+        static bool FindCave(Landscape landscape, out Vector3Int cave)
+        {
+            for (int radius = 0; radius < 40; radius++)
+            for (int z = -radius; z <= radius; z++)
+            for (int x = -radius; x <= radius; x++)
+            for (int y = 12; y < 40; y++)
+            {
+                cave = new Vector3Int(x, y, z);
+                if (landscape.GetBlock(cave) != 0 || landscape.GetBlock(cave + Vector3Int.up * 6) == 0) continue;
+                bool roomy = true;
+                for (int dx = -1; dx <= 3 && roomy; dx++)
+                    roomy = landscape.GetBlock(cave + new Vector3Int(dx, 0, 0)) == 0 && landscape.GetBlock(cave + new Vector3Int(dx, 1, 0)) == 0;
+                if (roomy) return true;
+            }
+            cave = default;
+            return false;
         }
 
         static void BuildWorld(Landscape landscape)
