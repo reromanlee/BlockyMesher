@@ -30,6 +30,7 @@ namespace reromanlee.BlockyMesher
         [Tooltip("Treat everything below y = 0 as solid, which hides the bottom faces of a terrain. Leave it off for objects seen from below, like a raft.")]
         [SerializeField] bool solidBelowWorld;
 
+        [Tooltip("Mesh colliders for a landscape that stays put, box colliders for one on a Rigidbody.")]
         [SerializeField] ColliderMode colliders;
 
         [Tooltip("Main-thread milliseconds per frame for building sections, and for streaming with a streamer. Edits always rebuild at once.")]

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51409710af097234aa39cc624d7d4ba1, type: 3}
+  m_Name: Stone
+  m_EditorClassIdentifier: reromanlee.BlockyMesher::reromanlee.BlockyMesher.BlockData
+  id: 1
+  textures:
+    right: 0
+    left: 0
+    up: 0
+    down: 0
+    forward: 0
+    back: 0
+  renderPass: 0
+  lightPasses: 0
+  emission: 0
+  lightColor: {r: 1, g: 1, b: 1, a: 1}
+  collidable: 1
+  hideSameNeighborFaces: 0

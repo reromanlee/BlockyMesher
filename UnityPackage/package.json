@@ -27,6 +27,18 @@
     "urp"
   ],
   "licensesUrl": "https://github.com/reromanlee/BlockyMesher/blob/main/LICENSE.md",
+  "samples": [
+    {
+      "displayName": "Infinite Terrain",
+      "description": "Endless hills and caves around a fly camera. Break and place blocks, save and load your edits, and run a day/night cycle that rebuilds no mesh. Needs the Input System package.",
+      "path": "Samples~/InfiniteTerrain"
+    },
+    {
+      "displayName": "Raft",
+      "description": "A standalone landscape made from a block pattern, floating on water with a Rigidbody. Edit it with the mouse and launch copies of it. Needs the Input System package.",
+      "path": "Samples~/Raft"
+    }
+  ],
   "author": {
     "name": "Roman Likhadievski",
     "url": "https://github.com/reromanlee",

@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c10adf8ee0146c4e971dde8bf8f8f41, type: 3}
+  m_Name: RaftPattern
+  m_EditorClassIdentifier: reromanlee.BlockyMesher::reromanlee.BlockyMesher.BlockPattern
+  size: {x: 9, y: 8, z: 6}
+  palette: 07000000000000000a00000004000000080000000500000009000000
+  bitsPerBlock: 3
+  packed: 0000000000000000000000000000000000000000244992244ab66d4992240b92245c926cdb9224499224499224d9ba254992344892a449b2754b9224499224499264db9624dbb620d9b625c9b62d49922449b66d4bb26d5b926ddb826cdb9664dbb624dbb625499224499224499224099224499224499224499224499224499224499224489224499224499224499224499224499224499238499224499224499224

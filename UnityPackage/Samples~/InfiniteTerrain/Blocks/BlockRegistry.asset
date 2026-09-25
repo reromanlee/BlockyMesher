@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38e9507fc79d8874ab313a05171ad8c4, type: 3}
+  m_Name: BlockRegistry
+  m_EditorClassIdentifier: reromanlee.BlockyMesher::reromanlee.BlockyMesher.BlockRegistry
+  blocks:
+  - {fileID: 11400000, guid: b18c9cbbc1840b446abd08917b53fca9, type: 2}
+  - {fileID: 11400000, guid: 52a0de03b2922794d97ad06d760cb46d, type: 2}
+  - {fileID: 11400000, guid: 587ce5a33e191cf4b94af1d5eb431ace, type: 2}
+  - {fileID: 11400000, guid: 8539631b6ce3d9f40bde7fc32bacbfbb, type: 2}
+  - {fileID: 11400000, guid: e8477b1259f2d69418c33314621da8ae, type: 2}
+  - {fileID: 11400000, guid: f0abdd86c4293c845baa8db7f89c9e8b, type: 2}
+  - {fileID: 11400000, guid: c610d16b6bb7f2c41816784b1ca59885, type: 2}
+  - {fileID: 11400000, guid: a26c7ef9dca23364ba0fe6590c5ac57e, type: 2}
+  - {fileID: 11400000, guid: 53ca83638cfc87249a74032a93d051f2, type: 2}
+  - {fileID: 11400000, guid: 0e09dbed6fa0be4469d6ca9532dd9613, type: 2}
+  textures: {fileID: 18700000, guid: 5d0c14d9a9d3a3343a62297f4f99a0d9, type: 3}
+  shader: {fileID: 4800000, guid: af98194ab52116f49a126cf11eff28eb, type: 3}
+  ambientOcclusion: {fileID: 18700000, guid: 0cf711af18e20b24e98671684fbaa881, type: 3}
+  crackShader: {fileID: 4800000, guid: aedfe922040cd4842b965374308e7c3a, type: 3}
+  cracks: {fileID: 18700000, guid: 1241413faa00e7c45a0adfceb15ce980, type: 3}
