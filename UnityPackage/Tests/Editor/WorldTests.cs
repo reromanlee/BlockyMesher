@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using reromanlee.BlockyMesher.Generation;
@@ -129,6 +130,30 @@ namespace reromanlee.BlockyMesher.Tests
             foreach (SectionObject section in landscape.Builder.Objects)
                 Assert.LessOrEqual(math.distance((float2)section.Position.xz + 0.5f, new float2(0.5f, 0.5f)), 2, "only columns in view radius get meshes");
             Assert.Greater(landscape.Builder.Objects.Count, 0);
+        }
+
+        [Test]
+        public void TerrainKeepsUpWithAMovingPlayer()
+        {
+            streamer.LoadEverything();
+            // Half a column at a time, so columns that loaded while still too far to show come into view.
+            for (int step = 1; step <= 8; step++)
+            {
+                player.transform.position = new Vector3(8 + step * 8, 40, 8);
+                streamer.LoadEverything();
+            }
+
+            var shown = new HashSet<int2>(landscape.Builder.Objects.Select(section => section.Position.xz));
+            var columns = new List<int2>();
+            for (int z = -6; z <= 6; z++)
+            for (int x = -2; x <= 10; x++)
+                columns.Add(new int2(x, z));
+            float Distance(int2 column) => math.distance(((float2)column + 0.5f) * Section.Size, new float2(72, 8)) / Section.Size;
+
+            foreach (int2 column in columns.Where(column => Distance(column) <= 2))
+                Assert.IsTrue(shown.Contains(column), $"column {column} is in view but shows nothing");
+            foreach (int2 column in columns.Where(column => Distance(column) > 2.5f))
+                Assert.IsFalse(shown.Contains(column), $"column {column} is out of view but still shows");
         }
 
         [Test]
