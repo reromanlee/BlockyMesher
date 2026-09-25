@@ -1,0 +1,19 @@
+{
+    "name": "reromanlee.BlockyMesher.Generation",
+    "rootNamespace": "reromanlee.BlockyMesher.Generation",
+    "references": [
+        "reromanlee.BlockyMesher",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

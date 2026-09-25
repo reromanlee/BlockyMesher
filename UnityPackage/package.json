@@ -2,13 +2,43 @@
   "name": "com.reromanlee.blockymesher",
   "version": "1.0.0",
   "displayName": "BlockyMesher",
-  "description": "",
+  "description": "Minecraft-like block landscapes built on the Job System and Burst: an infinite streaming terrain, or standalone block objects like a raft or a house. Smooth colored lighting and prebaked ambient occlusion, light enough for WebGL. URP.",
   "unity": "6000.0",
+  "dependencies": {
+    "com.unity.burst": "1.8.26",
+    "com.unity.collections": "2.4.3",
+    "com.unity.mathematics": "1.3.2",
+    "com.unity.render-pipelines.universal": "17.0.0",
+    "com.unity.modules.physics": "1.0.0"
+  },
   "license": "MIT",
   "documentationUrl": "https://github.com/reromanlee/BlockyMesher#readme",
   "changelogUrl": "https://github.com/reromanlee/BlockyMesher/blob/main/CHANGELOG.md",
-  "keywords": [],
+  "keywords": [
+    "voxel",
+    "blocks",
+    "minecraft",
+    "terrain",
+    "procedural",
+    "mesh",
+    "jobs",
+    "burst",
+    "webgl",
+    "urp"
+  ],
   "licensesUrl": "https://github.com/reromanlee/BlockyMesher/blob/main/LICENSE.md",
+  "samples": [
+    {
+      "displayName": "Infinite Terrain",
+      "description": "Endless hills and caves around a fly camera. Break and place blocks, save and load your edits, and run a day/night cycle that rebuilds no mesh. Needs the Input System package.",
+      "path": "Samples~/InfiniteTerrain"
+    },
+    {
+      "displayName": "Raft",
+      "description": "A standalone landscape made from a block pattern, floating on water with a Rigidbody. Edit it with the mouse and launch copies of it. Needs the Input System package.",
+      "path": "Samples~/Raft"
+    }
+  ],
   "author": {
     "name": "Roman Likhadievski",
     "url": "https://github.com/reromanlee",

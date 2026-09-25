@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 99fbb5c3b1850b5489b05a56f0db339d, type: 3}
+  m_Name: NoiseTerrain
+  m_EditorClassIdentifier: reromanlee.BlockyMesher.Generation::reromanlee.BlockyMesher.Generation.NoiseTerrainStep
+  surface: {fileID: 11400000, guid: 52a0de03b2922794d97ad06d760cb46d, type: 2}
+  subsurface: {fileID: 11400000, guid: 587ce5a33e191cf4b94af1d5eb431ace, type: 2}
+  subsurfaceDepth: 3
+  stone: {fileID: 11400000, guid: b18c9cbbc1840b446abd08917b53fca9, type: 2}
+  bedrock: {fileID: 0}
+  baseHeight: 48
+  amplitude: 24
+  scale: 96
+  octaves: 4
+  persistence: 0.5
+  caves: 1
+  caveScale: 24
+  caveThreshold: 0.45
+  caveFloor: 4

@@ -1,118 +1,153 @@
-Shader "reromanlee/BlockyMesher/BlockShader" {
+Shader "reromanlee/BlockyMesher/Blocks"
+{
+    Properties
+    {
+        [NoScaleOffset] _Textures ("Block Textures", 2DArray) = "" {}
+        [NoScaleOffset] _Occlusion ("Ambient Occlusion Tiles", 2DArray) = "" {}
+        _OcclusionStrength ("Ambient Occlusion Strength", Range(0, 1)) = 1
+        _MinimumLight ("Minimum Light", Range(0, 1)) = 0
+        _Cutoff ("Alpha Cutoff", Range(0, 1)) = 0.5
 
-    Properties {
-        _BlocksTexture ("Blocks (RGB)", 2D) = "white" { }
-        _LightmapTexture ("Lightmap (RGB)", 2D) = "white" { }
-        _BreakingTexture ("Breaking (RGB)", 2D) = "white" { }
-        _OcclusionTexture ("Occlusion (RGB)", 2D) = "white" { }
-        _SkylightColor ("Skylight (RGB)", COLOR) = (1, 1, 1)
+        // Render states, set per render pass by BlockRegistry.
+        [HideInInspector] _SrcBlend ("Source Blend", Float) = 1
+        [HideInInspector] _DstBlend ("Destination Blend", Float) = 0
+        [HideInInspector] _ZWrite ("Depth Write", Float) = 1
     }
 
-    SubShader {
-        
-        Tags {
-            "Queue" = "AlphaTest"
-            "IgnoreProjector" = "True"
-            "RenderType" = "TransparentCutout"
+    SubShader
+    {
+        Tags { "RenderPipeline" = "UniversalPipeline" "RenderType" = "Opaque" "Queue" = "Geometry" }
+
+        HLSLINCLUDE
+        #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+        CBUFFER_START(UnityPerMaterial)
+            half _OcclusionStrength;
+            half _MinimumLight;
+            half _Cutoff;
+            float4 _Occlusion_TexelSize;
+        CBUFFER_END
+
+        TEXTURE2D_ARRAY(_Textures);
+        SAMPLER(sampler_Textures);
+        TEXTURE2D_ARRAY(_Occlusion);
+        SAMPLER(sampler_Occlusion);
+
+        // Set from C# through BlockLighting.SkyColor, so a day/night cycle never rebuilds meshes.
+        half4 _BlockySkyColor;
+
+        // Every value is a small whole number packed into a normalized byte, see SectionVertex.cs.
+        struct Attributes
+        {
+            float4 positionAndCorner : POSITION;
+            half4 blockLight : COLOR;
+            float4 face : TEXCOORD0;
+        };
+
+        float3 UnpackPosition(Attributes input)
+        {
+            return round(input.positionAndCorner.xyz * 255.0);
         }
-        
-        LOD 100
-        Lighting Off
 
-        Pass {
-            // ########## SHADER PASS START ##########
+        float2 UnpackUV(Attributes input)
+        {
+            uint corner = (uint)round(input.positionAndCorner.w * 255.0);
+            return float2(corner & 1u, corner >> 1u);
+        }
+        ENDHLSL
 
-            CGPROGRAM
+        Pass
+        {
+            Name "BlockyForward"
+            Tags { "LightMode" = "UniversalForward" }
+            Blend [_SrcBlend] [_DstBlend]
+            ZWrite [_ZWrite]
 
-            #pragma vertex vert
-            #pragma fragment frag
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma require 2darray
+            #pragma vertex Vert
+            #pragma fragment Frag
             #pragma multi_compile_fog
-            #include "UnityCG.cginc"
+            #pragma multi_compile_local _ _ALPHATEST_ON
 
-            // Vertex input.
-            struct appdata {
-                float4 vertex : POSITION;
-                float2 colormapCoord : TEXCOORD0;
-                fixed4 blocklightColor : COLOR;
-                float2 lightmapIntensity : TEXCOORD1;
-                float2 lightmapCoord : TEXCOORD2;
-                float2 breakingCoord : TEXCOORD3;
-                float2 occlusionCoord : TEXCOORD4;
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 uv : TEXCOORD0;
+                nointerpolation float2 layers : TEXCOORD1;
+                half3 light : TEXCOORD2;
+                half fogFactor : TEXCOORD3;
             };
 
-            // Vertex into Fragment conversion.
-            struct v2f {
-                float4 vertex : SV_POSITION;
-                float2 colormapCoord : TEXCOORD0;
-                fixed4 lightmapColor : COLOR;
-                float2 lightmapCoord : TEXCOORD1;
-                float2 breakingCoord : TEXCOORD2;
-                float2 occlusionCoord : TEXCOORD3;
-                UNITY_FOG_COORDS(4)
-            };
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(UnpackPosition(input));
+                output.uv = UnpackUV(input);
+                output.layers = round(input.face.xy * 255.0);
 
-            // Define shader properties.
-            sampler2D _BlocksTexture;
-            sampler2D _LightmapTexture;
-            sampler2D _BreakingTexture;
-            sampler2D _OcclusionTexture;
-            fixed4 _SkylightColor;
-
-            // Color blending towards maximum brightness.
-            fixed4 blendColors(fixed4 colorA, fixed4 colorB) {
-                fixed4 outputColor;
-                outputColor.r = max(colorA.r, colorB.r);
-                outputColor.g = max(colorA.g, colorB.g);
-                outputColor.b = max(colorA.b, colorB.b);
-                outputColor.a = max(colorA.a, colorB.a);
-                return outputColor;
+                // Each color channel takes the brighter of skylight and block light.
+                half skyLevel = input.face.z * (255.0 / 7.0);
+                half3 light = max(_BlockySkyColor.rgb * skyLevel, input.blockLight.rgb);
+                output.light = max(light, _MinimumLight);
+                output.fogFactor = ComputeFogFactor(output.positionCS.z);
+                return output;
             }
 
-            // Vertex stage.
-            v2f vert (appdata v) {
-                v2f o;
-                // Vertex position.
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                UNITY_TRANSFER_FOG(o, o.vertex);
-                // Block texture UVs.
-                o.colormapCoord = v.colormapCoord;
-                // Calculate skylight and blocklight lightmap colors.
-                fixed4 skylightColor = _SkylightColor * v.lightmapIntensity.x;
-                fixed4 blocklightColor = v.blocklightColor * v.lightmapIntensity.y;
-                // Blended lightmap color.
-                o.lightmapColor = blendColors(skylightColor, blocklightColor);
-                // Lightmap texture UVs.
-                o.lightmapCoord = v.lightmapCoord;
-                // Breaking texture UVs.
-                o.breakingCoord = v.breakingCoord;
-                // Occlusion texture UVs.
-                o.occlusionCoord = v.occlusionCoord;
-                return o;
+            half4 Frag(Varyings input) : SV_Target
+            {
+                half4 albedo = SAMPLE_TEXTURE2D_ARRAY(_Textures, sampler_Textures, input.uv, input.layers.x);
+                #if defined(_ALPHATEST_ON)
+                    clip(albedo.a - _Cutoff);
+                #endif
+                // Inset by half a texel: the tiles' edge texels lie exactly on the face's edges.
+                float2 occlusionUV = input.uv * (1.0 - _Occlusion_TexelSize.xy) + 0.5 * _Occlusion_TexelSize.xy;
+                half occlusion = SAMPLE_TEXTURE2D_ARRAY(_Occlusion, sampler_Occlusion, occlusionUV, input.layers.y).r;
+                half3 color = albedo.rgb * input.light * lerp(1.0h, occlusion, _OcclusionStrength);
+                return half4(MixFog(color, input.fogFactor), albedo.a);
             }
-
-            // Fragment stage.
-            fixed4 frag (v2f i) : SV_Target {
-                fixed4 vertexColor = tex2D(_BlocksTexture, i.colormapCoord);
-                // Apply block texture transparency cut off.
-                clip(vertexColor.a - 0.5);
-                // Calculate skylight and blocklight lightmap colors.
-                vertexColor = vertexColor * i.lightmapColor;
-                // vertexColor = vertexColor *
-                    // Blended lightmap.
-                    // ; // *
-                    // Breaking texture.
-                    // tex2D(_BreakingTexture, i.breakingCoord) *
-                    // Ambiemt occlusion.
-                    // tex2D(_OcclusionTexture, i.occlusionCoord);
-                // Finally, apply Unity fog for the output color.
-                UNITY_APPLY_FOG(i.fogCoord, vertexColor);
-                return vertexColor;
-            }
-
-            ENDCG
-
-            // ########## SHADER PASS END ##########
+            ENDHLSL
         }
 
+        Pass
+        {
+            Name "DepthOnly"
+            Tags { "LightMode" = "DepthOnly" }
+            ZWrite On
+            ColorMask R
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma require 2darray
+            #pragma vertex DepthVert
+            #pragma fragment DepthFrag
+            #pragma multi_compile_local _ _ALPHATEST_ON
+
+            struct DepthVaryings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 uv : TEXCOORD0;
+                nointerpolation float layer : TEXCOORD1;
+            };
+
+            DepthVaryings DepthVert(Attributes input)
+            {
+                DepthVaryings output;
+                output.positionCS = TransformObjectToHClip(UnpackPosition(input));
+                output.uv = UnpackUV(input);
+                output.layer = round(input.face.x * 255.0);
+                return output;
+            }
+
+            half DepthFrag(DepthVaryings input) : SV_Target
+            {
+                #if defined(_ALPHATEST_ON)
+                    clip(SAMPLE_TEXTURE2D_ARRAY(_Textures, sampler_Textures, input.uv, input.layer).a - _Cutoff);
+                #endif
+                return input.positionCS.z;
+            }
+            ENDHLSL
+        }
     }
 }

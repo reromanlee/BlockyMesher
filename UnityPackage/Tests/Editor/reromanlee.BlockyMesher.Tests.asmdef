@@ -1,0 +1,29 @@
+{
+    "name": "reromanlee.BlockyMesher.Tests",
+    "rootNamespace": "reromanlee.BlockyMesher.Tests",
+    "references": [
+        "reromanlee.BlockyMesher",
+        "reromanlee.BlockyMesher.Editor",
+        "reromanlee.BlockyMesher.Generation",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
