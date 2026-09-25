@@ -132,6 +132,19 @@ namespace reromanlee.BlockyMesher.Tests
         }
 
         [Test]
+        public void TheLandscapeCanShutDownWhileColumnsAreGenerating()
+        {
+            streamer.Tick();
+            Assume.That(streamer.GeneratingCount, Is.GreaterThan(0), "needs worker threads to have jobs in flight");
+            landscape.enabled = false;
+            Assert.AreEqual(0, streamer.GeneratingCount);
+
+            landscape.enabled = true;
+            streamer.LoadEverything();
+            Assert.Greater(streamer.LoadedColumnCount, 0);
+        }
+
+        [Test]
         public void EditsSurviveLeavingAndComingBack()
         {
             streamer.LoadEverything();

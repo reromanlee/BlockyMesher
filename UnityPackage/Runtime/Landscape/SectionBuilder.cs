@@ -343,9 +343,9 @@ namespace reromanlee.BlockyMesher
                 target.Show(section);
                 objects.Add(section, target);
             }
-            build.Apply(target.Mesh);
+            build.Apply(target.WritableMesh());
 
-            // Once on the GPU, the CPU copy is dead weight: the next build replaces the mesh anyway.
+            // Once on the GPU, the CPU copy is dead weight: the next build writes a new mesh anyway.
             target.Mesh.UploadMeshData(true);
             target.SetMaterials(registry.GetMaterials(build.PassMask));
             target.ApplyColliders(build);

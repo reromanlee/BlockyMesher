@@ -163,6 +163,7 @@ namespace reromanlee.BlockyMesher
             landscape.CreatesColumns = false;
             landscape.BlockChanged += OnBlockChanged;
             landscape.AreaChanged += OnAreaChanged;
+            landscape.ShuttingDown += CancelGenerations;
             attached = true;
         }
 
@@ -178,6 +179,7 @@ namespace reromanlee.BlockyMesher
                 free.Pop().Dispose();
             landscape.BlockChanged -= OnBlockChanged;
             landscape.AreaChanged -= OnAreaChanged;
+            landscape.ShuttingDown -= CancelGenerations;
             landscape.CreatesColumns = true;
             landscape.Focus = null;
             if (landscape.Builder != null)
@@ -315,14 +317,14 @@ namespace reromanlee.BlockyMesher
             int parallel = JobsUtility.JobWorkerCount == 0 ? 1 : JobsUtility.JobWorkerCount;
             for (int i = 0; i < candidates.Count && running.Count < parallel && landscape.Timer.CurrentMs < landscape.FrameBudgetMs; i++)
             {
-                Start(candidates[i]);
+                Generate(candidates[i]);
                 if (JobsUtility.JobWorkerCount == 0)
                     FinishGenerations(true);
             }
             JobHandle.ScheduleBatchedJobs();
         }
 
-        void Start(int2 column)
+        void Generate(int2 column)
         {
             Generation generation = Rent();
             generation.Column = column;
@@ -340,6 +342,18 @@ namespace reromanlee.BlockyMesher
             }.Schedule(generated);
             running.Add(generation);
             generating.Add(column);
+        }
+
+        /// <summary>The generations read the landscape's block table, which is about to be freed.</summary>
+        void CancelGenerations()
+        {
+            foreach (Generation generation in running)
+            {
+                generation.Handle.Complete();
+                free.Push(generation);
+            }
+            running.Clear();
+            generating.Clear();
         }
 
         void FinishGenerations(bool wait)

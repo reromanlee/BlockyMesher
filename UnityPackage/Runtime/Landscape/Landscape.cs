@@ -111,6 +111,9 @@ namespace reromanlee.BlockyMesher
         internal event Action<int3, ushort> BlockChanged;
         internal event Action<int3, int3> AreaChanged;
 
+        /// <summary>Raised before the blocks and their table are freed, so jobs still reading them can finish first.</summary>
+        internal event Action ShuttingDown;
+
         public ushort GetBlock(Vector3Int position) => storage != null ? storage.GetBlock(ToInt3(position)) : (ushort)0;
 
         public bool SetBlock(Vector3Int position, BlockData block) => SetBlock(position, block != null ? (ushort)block.id : (ushort)0);
@@ -424,6 +427,7 @@ namespace reromanlee.BlockyMesher
 
         void Shutdown()
         {
+            ShuttingDown?.Invoke();
             cracks?.Destroy();
             cracks = null;
             builder?.Dispose();

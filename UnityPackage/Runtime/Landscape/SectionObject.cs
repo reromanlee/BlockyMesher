@@ -14,12 +14,14 @@ namespace reromanlee.BlockyMesher
         public const MeshColliderCookingOptions CookingOptions = MeshColliderCookingOptions.UseFastMidphase;
 
         public readonly GameObject GameObject;
-        public readonly Mesh Mesh;
+        readonly MeshFilter filter;
         readonly MeshRenderer renderer;
         readonly List<BoxCollider> boxes = new();
         MeshCollider meshCollider;
         Mesh collisionMesh;
         JobHandle cooking;
+
+        public Mesh Mesh { get; private set; }
 
         public int3 Position { get; private set; }
 
@@ -40,8 +42,7 @@ namespace reromanlee.BlockyMesher
         {
             GameObject = new GameObject("Section") { hideFlags = Flags, layer = parent.gameObject.layer };
             GameObject.transform.SetParent(parent, false);
-            Mesh = new Mesh { name = "Section", hideFlags = HideFlags.DontSave };
-            GameObject.AddComponent<MeshFilter>().sharedMesh = Mesh;
+            filter = GameObject.AddComponent<MeshFilter>();
             renderer = GameObject.AddComponent<MeshRenderer>();
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
@@ -55,6 +56,21 @@ namespace reromanlee.BlockyMesher
             GameObject.name = $"Section {section.x} {section.y} {section.z}";
             GameObject.transform.localPosition = (float3)(section * Section.Size);
             GameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// The mesh to write the next build into. A mesh that dropped its CPU copy can't take new data
+        /// in Play Mode or a player, so it is swapped for a fresh one, and the old one leaves the GPU.
+        /// </summary>
+        public Mesh WritableMesh()
+        {
+            if (Mesh == null || !Mesh.isReadable)
+            {
+                DestroyObject(Mesh);
+                Mesh = new Mesh { name = "Section", hideFlags = HideFlags.DontSave };
+                filter.sharedMesh = Mesh;
+            }
+            return Mesh;
         }
 
         public void SetMaterials(Material[] materials) => renderer.sharedMaterials = materials;
