@@ -273,6 +273,40 @@ namespace reromanlee.BlockyMesher.Tests
         }
 
         [Test]
+        public void BlockBoundsCoverEveryBlock()
+        {
+            Assert.IsFalse(landscape.TryGetBlockBounds(out _));
+            landscape.SetBlock(new Vector3Int(-3, 2, 5), Stone);
+            landscape.SetBlock(new Vector3Int(10, 20, -7), Dirt);
+            Assert.IsTrue(landscape.TryGetBlockBounds(out BoundsInt bounds));
+            Assert.AreEqual(new Vector3Int(-3, 2, -7), bounds.min);
+            Assert.AreEqual(new Vector3Int(14, 19, 13), bounds.size);
+        }
+
+        [Test]
+        public void StatsCountMeshesAndTheirMemory()
+        {
+            landscape.SetBlock(new Vector3Int(1, 1, 1), Stone);
+            LandscapeStats stats = landscape.GetStats();
+            Assert.AreEqual(1, stats.Columns);
+            Assert.AreEqual(1, stats.SectionMeshes);
+            Assert.AreEqual(1, stats.DrawCalls);
+            Assert.AreEqual(24, stats.Vertices);
+            Assert.AreEqual(12, stats.Triangles);
+            Assert.AreEqual(24 * 12 + 36 * 2, stats.MeshBytes, "12-byte vertices and 16-bit indices");
+            Assert.AreEqual(Section.Volume * 2 + Section.Area * 2, stats.BlockBytes, "one block array and one sky start map");
+            Assert.Greater(stats.WorkBufferBytes, 0);
+            StringAssert.Contains("draw calls", stats.ToString());
+        }
+
+        [Test]
+        public void SectionMeshesDropTheirCpuCopy()
+        {
+            landscape.SetBlock(new Vector3Int(1, 1, 1), Stone);
+            Assert.IsFalse(Sections.Single().Mesh.isReadable);
+        }
+
+        [Test]
         public void ClearingRemovesEveryBlockAndSection()
         {
             landscape.Fill(new BoundsInt(-20, 0, -20, 40, 20, 40), Stone);

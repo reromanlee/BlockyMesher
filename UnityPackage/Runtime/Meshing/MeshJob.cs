@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -15,6 +16,8 @@ namespace reromanlee.BlockyMesher.Meshing
     [BurstCompile(CompileSynchronously = true)]
     internal struct MeshJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.Mesh");
+
         [ReadOnly] public NativeArray<ushort> Blocks;
         [ReadOnly] public NativeArray<byte> Flags;
         [ReadOnly] public NativeArray<byte> Sky;
@@ -31,6 +34,7 @@ namespace reromanlee.BlockyMesher.Meshing
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             // First find the visible faces, so the mesh buffers can be sized exactly, then write them.
             var visibleFaces = new NativeArray<byte>(Section.Volume, Allocator.Temp);
             int3 faceCounts = FindVisibleFaces(visibleFaces);

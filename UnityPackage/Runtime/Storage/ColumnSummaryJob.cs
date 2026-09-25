@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
+using Unity.Profiling;
 
 namespace reromanlee.BlockyMesher.Storage
 {
@@ -24,6 +25,8 @@ namespace reromanlee.BlockyMesher.Storage
     [BurstCompile(CompileSynchronously = true)]
     internal struct ColumnSummaryJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.ColumnSummary");
+
         [ReadOnly] public NativeArray<ushort> Blocks;
         [ReadOnly] public NativeArray<BlockInfo> BlockInfos;
         public int SectionCount;
@@ -35,6 +38,7 @@ namespace reromanlee.BlockyMesher.Storage
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             for (int section = 0; section < SectionCount; section++)
             {
                 int start = section * Section.Volume;

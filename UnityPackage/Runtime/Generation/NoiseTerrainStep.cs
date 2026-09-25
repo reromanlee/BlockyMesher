@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace reromanlee.BlockyMesher.Generation
@@ -80,6 +81,8 @@ namespace reromanlee.BlockyMesher.Generation
     [BurstCompile(CompileSynchronously = true)]
     struct NoiseTerrainJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.NoiseTerrain");
+
         public ColumnContext Column;
         public ushort Surface;
         public ushort Subsurface;
@@ -100,6 +103,7 @@ namespace reromanlee.BlockyMesher.Generation
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             // The seed picks where in the endless noise this world sits.
             uint hash = math.hash(new uint2(Column.Seed, 0x9E3779B9));
             float2 hillOffset = new float2(hash & 0xFFFF, hash >> 16) * 0.37f;

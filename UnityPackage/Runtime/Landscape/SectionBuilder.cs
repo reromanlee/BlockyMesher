@@ -1,24 +1,29 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using reromanlee.BlockyMesher.Meshing;
 using reromanlee.BlockyMesher.Storage;
 using Unity.Jobs;
 using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace reromanlee.BlockyMesher
 {
     /// <summary>
     /// Turns dirty sections into section objects. Sections touched by an edit are rebuilt at once;
-    /// everything else waits in a queue, nearest to <see cref="Focus"/> first, and is built within a
-    /// time budget per frame. Where the Job System has worker threads, builds run on them while the
-    /// frame goes on. Where it has none (the web without multithreading), each build runs to the end
-    /// right away, and the budget alone decides how many happen per frame.
+    /// everything else waits in a queue, nearest to <see cref="Focus"/> first, and is built within the
+    /// landscape's time budget per frame, which it shares with a streamer. Where the Job System has
+    /// worker threads, builds run on them while the frame goes on. Where it has none (the web without
+    /// multithreading), each build runs to the end right away, and the budget alone decides how many
+    /// happen per frame.
     /// </summary>
     internal sealed class SectionBuilder : IDisposable
     {
+        static readonly ProfilerMarker UpdateMarker = new("BlockyMesher.BuildSections");
+        static readonly ProfilerMarker PresentMarker = new("BlockyMesher.PresentSection");
+
         struct Running
         {
             public int3 Section;
@@ -29,6 +34,7 @@ namespace reromanlee.BlockyMesher
         readonly BlockStorage storage;
         readonly BlockTable table;
         readonly BlockRegistry registry;
+        readonly FrameTimer timer;
 
         readonly Dictionary<int3, SectionObject> objects = new();
         readonly Stack<SectionObject> freeObjects = new();
@@ -43,6 +49,7 @@ namespace reromanlee.BlockyMesher
         readonly List<int3> postponed = new();
         readonly DistanceComparer comparer = new();
         bool sortNeeded;
+        float idleSince = -1;
 
         public BuildSettings Settings;
         public ColliderMode Colliders;
@@ -55,12 +62,13 @@ namespace reromanlee.BlockyMesher
         /// <summary>Which columns get colliders; all when null. A streamer limits them to the area around the player.</summary>
         public Func<int2, bool> WantsColliders;
 
-        public SectionBuilder(Transform parent, BlockStorage storage, BlockTable table, BlockRegistry registry)
+        public SectionBuilder(Transform parent, BlockStorage storage, BlockTable table, BlockRegistry registry, FrameTimer timer)
         {
             this.parent = parent;
             this.storage = storage;
             this.table = table;
             this.registry = registry;
+            this.timer = timer;
         }
 
         public int QueuedCount => queued.Count;
@@ -108,8 +116,8 @@ namespace reromanlee.BlockyMesher
 
         public void Update()
         {
-            long start = Stopwatch.GetTimestamp();
-            Harvest(false);
+            using ProfilerMarker.AutoScope scope = UpdateMarker.Auto();
+            Harvest(false, true);
             BuildUrgent();
             if (sortNeeded || math.distancesq(Focus, comparer.Focus) > 64)
             {
@@ -118,7 +126,7 @@ namespace reromanlee.BlockyMesher
                 sortNeeded = false;
             }
 
-            while (queue.Count > 0 && running.Count < ParallelBuilds && MillisecondsSince(start) < BudgetMs)
+            while (queue.Count > 0 && running.Count < ParallelBuilds && timer.CurrentMs < BudgetMs)
             {
                 int3 section = queue[^1];
                 queue.RemoveAt(queue.Count - 1);
@@ -146,13 +154,31 @@ namespace reromanlee.BlockyMesher
         /// <summary>Picks up builds that finished during the frame, and colliders PhysX is done with.</summary>
         public void LateUpdate()
         {
-            Harvest(false);
+            Harvest(false, true);
             for (int i = cooking.Count - 1; i >= 0; i--)
             {
                 cooking[i].FinishCooking(false);
                 if (!cooking[i].IsCooking)
                     cooking.RemoveAt(i);
             }
+            TrimWhenIdle();
+        }
+
+        /// <summary>
+        /// Each build holds about half a megabyte of buffers, and a burst of streaming leaves one per
+        /// worker thread behind. After a few quiet seconds, all but one are freed.
+        /// </summary>
+        void TrimWhenIdle()
+        {
+            if (queued.Count > 0 || running.Count > 0)
+            {
+                idleSince = -1;
+                return;
+            }
+            if (idleSince < 0)
+                idleSince = Time.unscaledTime;
+            else if (Time.unscaledTime - idleSince > 3)
+                while (freeBuilds.Count > 1) freeBuilds.Pop().Dispose();
         }
 
         /// <summary>Builds everything that is waiting, right now, in batches so worker threads share the load.</summary>
@@ -194,6 +220,30 @@ namespace reromanlee.BlockyMesher
             queue.Clear();
             queued.Clear();
             urgent.Clear();
+        }
+
+        public void AddStats(ref LandscapeStats stats)
+        {
+            foreach (SectionObject target in objects.Values)
+            {
+                Mesh mesh = target.Mesh;
+                long indices = 0;
+                for (int subMesh = 0; subMesh < mesh.subMeshCount; subMesh++)
+                    indices += mesh.GetIndexCount(subMesh);
+                stats.SectionMeshes++;
+                stats.DrawCalls += mesh.subMeshCount;
+                stats.Vertices += mesh.vertexCount;
+                stats.Triangles += indices / 3;
+                stats.MeshBytes += (long)mesh.vertexCount * SectionVertex.Size + indices * (mesh.indexFormat == IndexFormat.UInt16 ? 2 : 4);
+                if (target.HasColliders)
+                {
+                    stats.SectionsWithColliders++;
+                    stats.ColliderBytes += target.ColliderBytes;
+                }
+            }
+            stats.QueuedSections = queued.Count;
+            stats.BuildingSections = running.Count;
+            stats.WorkBufferBytes += (long)(running.Count + freeBuilds.Count) * SectionBuild.MemoryBytes;
         }
 
         void Enqueue(int3 section, bool isUrgent)
@@ -238,10 +288,13 @@ namespace reromanlee.BlockyMesher
             running.Add(new Running { Section = section, Build = build });
         }
 
-        void Harvest(bool wait)
+        /// <summary>Presents finished builds; all of them, or only as many as the frame budget allows.</summary>
+        void Harvest(bool wait, bool withinBudget = false)
         {
             for (int i = 0; i < running.Count; i++)
             {
+                if (withinBudget && timer.CurrentMs >= BudgetMs)
+                    return;
                 Running entry = running[i];
                 if (!wait && !entry.Build.Handle.IsCompleted)
                     continue;
@@ -277,6 +330,7 @@ namespace reromanlee.BlockyMesher
 
         void Present(int3 section, SectionBuild build)
         {
+            using ProfilerMarker.AutoScope scope = PresentMarker.Auto();
             if (!storage.TryGetColumn(section.xz, out _) || build.VertexCount == 0)
             {
                 build.Cancel();
@@ -290,6 +344,9 @@ namespace reromanlee.BlockyMesher
                 objects.Add(section, target);
             }
             build.Apply(target.Mesh);
+
+            // Once on the GPU, the CPU copy is dead weight: the next build replaces the mesh anyway.
+            target.Mesh.UploadMeshData(true);
             target.SetMaterials(registry.GetMaterials(build.PassMask));
             target.ApplyColliders(build);
             if (target.IsCooking && !cooking.Contains(target))
@@ -333,8 +390,6 @@ namespace reromanlee.BlockyMesher
             SectionBlocks blocks = column.Sections[section.y];
             return blocks.IsUniform && table[blocks.UniformId].Is(BlockFlags.Opaque);
         }
-
-        static double MillisecondsSince(long timestamp) => (Stopwatch.GetTimestamp() - timestamp) * 1000.0 / Stopwatch.Frequency;
 
         sealed class DistanceComparer : IComparer<int3>
         {

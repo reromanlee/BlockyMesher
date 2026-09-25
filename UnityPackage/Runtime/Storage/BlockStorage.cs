@@ -37,6 +37,10 @@ namespace reromanlee.BlockyMesher.Storage
         public int ColumnCount => columns.Count;
         public int MixedSectionCount { get; private set; }
         public int PooledArrayCount => freeArrays.Count;
+
+        /// <summary>Native memory the blocks take: block arrays in use or pooled, and each column's sky starts.</summary>
+        public long MemoryBytes => (long)(MixedSectionCount + freeArrays.Count) * Section.Volume * sizeof(ushort)
+            + (long)(columns.Count + freeColumns.Count) * Section.Area * sizeof(ushort);
         public Dictionary<int2, Column>.ValueCollection Columns => columns.Values;
 
         public bool TryGetColumn(int2 position, out Column column) => columns.TryGetValue(position, out column);

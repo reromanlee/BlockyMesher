@@ -23,6 +23,12 @@ namespace reromanlee.BlockyMesher
 
         public int3 Position { get; private set; }
 
+        public bool HasColliders => (meshCollider != null && meshCollider.enabled) || (boxes.Count > 0 && boxes[0].enabled);
+
+        public long ColliderBytes => meshCollider != null && meshCollider.enabled && collisionMesh != null
+            ? collisionMesh.vertexCount * 12L + collisionMesh.GetIndexCount(0) * (collisionMesh.indexFormat == IndexFormat.UInt16 ? 2L : 4L)
+            : 0;
+
         /// <summary>
         /// Never saved: sections are rebuilt from blocks. Outside Play Mode they are hidden too, so they
         /// don't clutter the Hierarchy or show up as changes to a prefab.

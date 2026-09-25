@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 
 namespace reromanlee.BlockyMesher.Meshing
 {
@@ -13,6 +14,8 @@ namespace reromanlee.BlockyMesher.Meshing
     [BurstCompile(CompileSynchronously = true)]
     internal struct GatherJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.Gather");
+
         /// <summary>27 × 4096 ids, neighbor n at <c>n * 4096</c>. Only filled for mixed sections.</summary>
         [ReadOnly] public NativeArray<ushort> Sections;
 
@@ -30,6 +33,7 @@ namespace reromanlee.BlockyMesher.Meshing
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             // Shifting box coordinates by 8 makes them relative to the lowest neighbor section:
             // 8..39, so ">> 4" picks the neighbor (0, 1, 2) and "& 15" the position inside it.
             for (int y = 0; y < Neighborhood.Size; y++)

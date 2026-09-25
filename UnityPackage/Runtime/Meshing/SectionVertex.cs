@@ -13,6 +13,8 @@ namespace reromanlee.BlockyMesher.Meshing
     [StructLayout(LayoutKind.Sequential)]
     internal struct SectionVertex
     {
+        public const int Size = 12;
+
         // POSITION: where the corner is in its section (0..16), and which texture corner it is.
         public byte X;
         public byte Y;

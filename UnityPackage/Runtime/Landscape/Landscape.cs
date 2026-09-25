@@ -32,7 +32,7 @@ namespace reromanlee.BlockyMesher
 
         [SerializeField] ColliderMode colliders;
 
-        [Tooltip("Main thread milliseconds per frame spent on building sections.")]
+        [Tooltip("Main-thread milliseconds per frame for building sections, and for streaming with a streamer. Edits always rebuild at once.")]
         [SerializeField, Min(0.5f)] float frameBudgetMs = 4;
 
         [Tooltip("Blocks the landscape starts with, placed at (0, 0, 0).")]
@@ -43,6 +43,8 @@ namespace reromanlee.BlockyMesher
         SectionBuilder builder;
         CrackOverlay cracks;
         int batchDepth;
+        readonly FrameTimer timer = new();
+        readonly RateMeter buildRate = new();
 
         /// <summary>Changing it starts the landscape over: its blocks are cleared.</summary>
         public BlockRegistry Registry
@@ -95,6 +97,7 @@ namespace reromanlee.BlockyMesher
         /// <summary>False until a registry is assigned.</summary>
         public bool IsReady => storage != null;
 
+        internal FrameTimer Timer => timer;
         internal BlockStorage Storage => storage;
         internal SectionBuilder Builder => builder;
         internal BlockTable Table => table;
@@ -197,8 +200,70 @@ namespace reromanlee.BlockyMesher
             }
         }
 
+        /// <summary>What the landscape costs right now: counts, memory and main-thread time. Cheap enough to call a few times a second.</summary>
+        public LandscapeStats GetStats()
+        {
+            var stats = new LandscapeStats();
+            if (storage == null)
+                return stats;
+            stats.Columns = storage.ColumnCount;
+            stats.MixedSections = storage.MixedSectionCount;
+            stats.BlockBytes = storage.MemoryBytes;
+            builder.AddStats(ref stats);
+            if (TryGetComponent(out LandscapeStreamer streamer))
+                streamer.AddStats(ref stats);
+            stats.MainThreadMs = timer.AverageMs;
+            stats.PeakMainThreadMs = timer.PeakMs;
+            stats.SectionsBuiltPerSecond = buildRate.PerSecond;
+            return stats;
+        }
+
         /// <summary>Builds every section still waiting, right away. Useful before a screenshot or enabling physics.</summary>
         public void CompleteRebuilds() => builder?.CompleteAll();
+
+        /// <summary>Rebuilds every section, for example after changing blocks in the registry while editing.</summary>
+        public void Rebuild()
+        {
+            builder?.MarkAllDirty();
+            RebuildIfEditing();
+        }
+
+        /// <summary>The smallest box holding every block that isn't air. False when there is none.</summary>
+        public bool TryGetBlockBounds(out BoundsInt bounds)
+        {
+            bounds = default;
+            if (storage == null)
+                return false;
+            var min = new int3(int.MaxValue);
+            var max = new int3(int.MinValue);
+            foreach (Column column in storage.Columns)
+            for (int y = 0; y < column.Sections.Length; y++)
+            {
+                SectionBlocks section = column.Sections[y];
+                int3 origin = new int3(column.Position.x, y, column.Position.y) * Section.Size;
+                if (section.IsUniform)
+                {
+                    if (section.UniformId == 0)
+                        continue;
+                    min = math.min(min, origin);
+                    max = math.max(max, origin + Section.Size - 1);
+                    continue;
+                }
+                for (int i = 0; i < Section.Volume; i++)
+                {
+                    if (section.Blocks[i] == 0)
+                        continue;
+                    int3 position = origin + Section.Local(i);
+                    min = math.min(min, position);
+                    max = math.max(max, position);
+                }
+            }
+            if (min.x > max.x)
+                return false;
+            int3 size = max - min + 1;
+            bounds = new BoundsInt(min.x, min.y, min.z, size.x, size.y, size.z);
+            return true;
+        }
 
         /// <summary>
         /// Groups many edits: <c>using (landscape.BatchEdits()) { ... }</c>. Outside Play Mode the
@@ -311,14 +376,20 @@ namespace reromanlee.BlockyMesher
         {
             if (builder == null || !Application.isPlaying)
                 return;
+            timer.Begin();
             builder.Focus = Focus ?? CameraFocus();
             builder.Update();
+            buildRate.Sample(builder.BuildsFinished);
+            timer.End();
         }
 
         void LateUpdate()
         {
-            if (builder != null && Application.isPlaying)
-                builder.LateUpdate();
+            if (builder == null || !Application.isPlaying)
+                return;
+            timer.Begin();
+            builder.LateUpdate();
+            timer.End();
         }
 
 #if UNITY_EDITOR
@@ -343,7 +414,7 @@ namespace reromanlee.BlockyMesher
             BlockLighting.Apply();
             table = registry.Bake(Allocator.Persistent);
             storage = new BlockStorage(sectionsPerColumn, table);
-            builder = new SectionBuilder(transform, storage, table, registry);
+            builder = new SectionBuilder(transform, storage, table, registry, timer);
             ApplySettings(false);
             if (pattern != null)
                 PlaceBlocks(pattern, int3.zero, true);

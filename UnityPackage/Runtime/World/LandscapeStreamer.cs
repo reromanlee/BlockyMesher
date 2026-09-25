@@ -1,10 +1,10 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using reromanlee.BlockyMesher.Storage;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Jobs.LowLevel.Unsafe;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace reromanlee.BlockyMesher
@@ -18,6 +18,8 @@ namespace reromanlee.BlockyMesher
     [AddComponentMenu("BlockyMesher/Landscape Streamer")]
     public sealed class LandscapeStreamer : MonoBehaviour
     {
+        static readonly ProfilerMarker TickMarker = new("BlockyMesher.Streaming");
+
         [Tooltip("Generates the terrain.")]
         [SerializeField] TerrainGenerator generator;
 
@@ -66,6 +68,9 @@ namespace reromanlee.BlockyMesher
         readonly List<float3> foci = new();
         float2 lookDirection;
         bool attached;
+        long columnsLoaded;
+        readonly RateMeter loadRate = new();
+        float idleSince = -1;
 
         /// <summary>Changing it regenerates every loaded column; stored edits are kept.</summary>
         public TerrainGenerator Generator
@@ -133,8 +138,21 @@ namespace reromanlee.BlockyMesher
 
         void Update()
         {
-            if (attached)
-                Tick();
+            if (!attached)
+                return;
+            landscape.Timer.Begin();
+            Tick();
+            loadRate.Sample(columnsLoaded);
+            landscape.Timer.End();
+        }
+
+        internal void AddStats(ref LandscapeStats stats)
+        {
+            stats.GeneratingColumns = running.Count;
+            stats.ColumnsLoadedPerSecond = loadRate.PerSecond;
+            stats.EditBytes = edits.Bytes;
+            if (landscape != null && landscape.IsReady)
+                stats.WorkBufferBytes += (long)(running.Count + free.Count) * (landscape.Height * Section.Area * sizeof(ushort) + Section.Area * sizeof(ushort));
         }
 
         internal void Attach()
@@ -175,6 +193,7 @@ namespace reromanlee.BlockyMesher
         {
             if (!landscape.IsReady || generator == null)
                 return;
+            using ProfilerMarker.AutoScope scope = TickMarker.Auto();
             landscape.Builder.CanBuild = CanBuild;
             landscape.Builder.WantsColliders = WantsColliders;
             UpdateFoci();
@@ -184,6 +203,21 @@ namespace reromanlee.BlockyMesher
             UnloadFarColumns();
             StartGenerations();
             UpdatePhysicsColumns();
+            TrimWhenIdle();
+        }
+
+        /// <summary>After a few quiet seconds, frees the column buffers a burst of loading left behind.</summary>
+        void TrimWhenIdle()
+        {
+            if (candidates.Count > 0 || running.Count > 0)
+            {
+                idleSince = -1;
+                return;
+            }
+            if (idleSince < 0)
+                idleSince = Time.unscaledTime;
+            else if (Time.unscaledTime - idleSince > 3)
+                while (free.Count > 1) free.Pop().Dispose();
         }
 
         /// <summary>Test hook: generates and builds everything in reach right now.</summary>
@@ -278,9 +312,8 @@ namespace reromanlee.BlockyMesher
             }
             SortByScore();
 
-            long start = Stopwatch.GetTimestamp();
             int parallel = JobsUtility.JobWorkerCount == 0 ? 1 : JobsUtility.JobWorkerCount;
-            for (int i = 0; i < candidates.Count && running.Count < parallel && MillisecondsSince(start) < landscape.FrameBudgetMs; i++)
+            for (int i = 0; i < candidates.Count && running.Count < parallel && landscape.Timer.CurrentMs < landscape.FrameBudgetMs; i++)
             {
                 Start(candidates[i]);
                 if (JobsUtility.JobWorkerCount == 0)
@@ -331,6 +364,7 @@ namespace reromanlee.BlockyMesher
             BlockStorage storage = landscape.Storage;
             Column column = storage.LoadColumn(generation.Column, generation.Blocks, generation.UniformIds, generation.SkyStart);
             edits.Apply(storage, column);
+            columnsLoaded++;
 
             // The column's neighbors can now build their borders too.
             int2 column0 = generation.Column;
@@ -459,6 +493,5 @@ namespace reromanlee.BlockyMesher
             }
         }
 
-        static double MillisecondsSince(long timestamp) => (Stopwatch.GetTimestamp() - timestamp) * 1000.0 / Stopwatch.Frequency;
     }
 }

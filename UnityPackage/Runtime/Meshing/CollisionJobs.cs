@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -22,11 +23,14 @@ namespace reromanlee.BlockyMesher.Meshing
     [BurstCompile(CompileSynchronously = true)]
     internal struct CollisionMeshJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.CollisionMesh");
+
         [ReadOnly] public NativeArray<byte> Flags;
         public Mesh.MeshData Output;
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             var corners = new NativeList<float3>(Allocator.Temp);
             var open = new NativeArray<bool>(Section.Area, Allocator.Temp);
             for (int face = 0; face < Faces.Count; face++)
@@ -151,11 +155,14 @@ namespace reromanlee.BlockyMesher.Meshing
     [BurstCompile(CompileSynchronously = true)]
     internal struct BoxMergeJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.BoxColliders");
+
         [ReadOnly] public NativeArray<byte> Flags;
         public NativeList<BoxRange> Boxes;
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             Boxes.Clear();
             var taken = new NativeArray<bool>(Section.Volume, Allocator.Temp);
             for (int y = 0; y < Section.Size; y++)

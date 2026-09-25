@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Profiling;
 
 namespace reromanlee.BlockyMesher.Meshing
 {
@@ -15,6 +16,8 @@ namespace reromanlee.BlockyMesher.Meshing
     [BurstCompile(CompileSynchronously = true)]
     internal struct LightJob : IJob
     {
+        static readonly ProfilerMarker Marker = new("BlockyMesher.Light");
+
         public const int MaxLevel = 7;
 
         [ReadOnly] public NativeArray<ushort> Blocks;
@@ -33,6 +36,7 @@ namespace reromanlee.BlockyMesher.Meshing
 
         public void Execute()
         {
+            using ProfilerMarker.AutoScope scope = Marker.Auto();
             var emitters = new NativeList<int>(Allocator.Temp);
             PrepareCells(emitters);
             SpreadSkylight();
