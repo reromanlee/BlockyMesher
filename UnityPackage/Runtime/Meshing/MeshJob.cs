@@ -9,7 +9,8 @@ namespace reromanlee.BlockyMesher.Meshing
 {
     /// <summary>
     /// Turns the lit neighborhood into the section's mesh, written straight into Unity's mesh
-    /// buffers. Faces are grouped by render pass into three submeshes: opaque, cutout, transparent.
+    /// buffers. Faces are grouped by render pass (opaque, cutout, transparent), one submesh per pass
+    /// that has any.
     /// </summary>
     [BurstCompile(CompileSynchronously = true)]
     internal struct MeshJob : IJob
@@ -24,6 +25,9 @@ namespace reromanlee.BlockyMesher.Meshing
         public bool SmoothLighting;
 
         public Mesh.MeshData Output;
+
+        /// <summary>One bit per render pass that has faces. Only those passes become submeshes, in pass order.</summary>
+        [WriteOnly] public NativeArray<int> PassMask;
 
         public void Execute()
         {
@@ -58,19 +62,25 @@ namespace reromanlee.BlockyMesher.Meshing
                 }
             }
 
+            // Most sections only hold opaque blocks: one submesh, one material, one draw call.
+            int passMask = (faceCounts.x > 0 ? 1 : 0) | (faceCounts.y > 0 ? 2 : 0) | (faceCounts.z > 0 ? 4 : 0);
+            PassMask[0] = passMask;
+            Output.subMeshCount = math.countbits(passMask);
             var bounds = new Bounds(new Vector3(8, 8, 8), new Vector3(16, 16, 16));
-            Output.subMeshCount = 3;
             int firstFace = 0;
+            int subMeshIndex = 0;
             for (int pass = 0; pass < 3; pass++)
             {
                 int count = faceCounts[pass];
+                if (count == 0)
+                    continue;
                 var subMesh = new SubMeshDescriptor(firstFace * 6, count * 6)
                 {
                     bounds = bounds,
                     firstVertex = firstFace * 4,
                     vertexCount = count * 4,
                 };
-                Output.SetSubMesh(pass, subMesh, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontNotifyMeshUsers);
+                Output.SetSubMesh(subMeshIndex++, subMesh, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontNotifyMeshUsers);
                 firstFace += count;
             }
         }

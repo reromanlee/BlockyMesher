@@ -1,15 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using NUnit.Framework;
-using reromanlee.BlockyMesher.Meshing;
-using reromanlee.BlockyMesher.Storage;
-using Unity.Collections;
 using Unity.Mathematics;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Debug = UnityEngine.Debug;
 using Object = UnityEngine.Object;
 
 namespace reromanlee.BlockyMesher.Tests
@@ -41,103 +40,86 @@ namespace reromanlee.BlockyMesher.Tests
             RenderSettings.fogEndDistance = 120;
             BlockLighting.SkyColor = new Color(1f, 0.97f, 0.9f);
 
-            BlockRegistry registry = CreateRegistry();
-            BlockTable table = registry.Bake(Allocator.Persistent);
-            var storage = new BlockStorage(3, table);
-            try
-            {
-                BuildWorld(storage);
-                SpawnSections(storage, table, registry);
+            var landscapeObject = new GameObject("Preview Landscape");
+            created.Add(landscapeObject);
+            var landscape = landscapeObject.AddComponent<Landscape>();
+            landscape.Registry = CreateRegistry();
+            landscape.SectionsPerColumn = 3;
+            landscape.SolidBelowWorld = true;
 
-                string folder = Path.GetFullPath("BlockyMesherPreviews");
-                Directory.CreateDirectory(folder);
-                Render(folder, "overview", new Vector3(-13, 25, -17), new Vector3(9, 10, 8));
-                Render(folder, "overhang", new Vector3(6, 12.5f, -0.5f), new Vector3(6, 10, 6));
-                Render(folder, "house", new Vector3(17.5f, 11.6f, 3.4f), new Vector3(17.5f, 10.5f, 8));
-                Render(folder, "closeup", new Vector3(11.5f, 15, -3.5f), new Vector3(16, 10, 3));
-                Render(folder, "ao", new Vector3(-21, 15, -24), new Vector3(-16, 9, -16));
-                Debug.Log($"Previews written to {folder}");
-            }
-            finally
-            {
-                storage.Dispose();
-                table.Dispose();
-                foreach (Object item in created)
-                    Object.DestroyImmediate(item);
-            }
+            var watch = Stopwatch.StartNew();
+            Landscape.EditBatch batch = landscape.BatchEdits();
+            BuildWorld(landscape);
+            long editing = watch.ElapsedMilliseconds;
+            long before = landscape.Builder.BuildsFinished;
+            batch.Dispose();
+            Debug.Log($"Edits took {editing} ms, then {landscape.Builder.BuildsFinished - before} sections were built in {watch.ElapsedMilliseconds - editing} ms");
+
+            landscape.ShowCrack(new Vector3Int(-19, 9, -19), 0.7f);
+            string folder = Path.GetFullPath("BlockyMesherPreviews");
+            Directory.CreateDirectory(folder);
+            Render(folder, "overview", new Vector3(-13, 25, -17), new Vector3(9, 10, 8));
+            Render(folder, "overhang", new Vector3(6, 12.5f, -0.5f), new Vector3(6, 10, 6));
+            Render(folder, "house", new Vector3(17.5f, 11.6f, 3.4f), new Vector3(17.5f, 10.5f, 8));
+            Render(folder, "closeup", new Vector3(11.5f, 17, -4.5f), new Vector3(16, 10, 3));
+            Render(folder, "crack", new Vector3(-20.8f, 11.2f, -21.2f), new Vector3(-18.5f, 9.5f, -18.5f));
+            Render(folder, "ao", new Vector3(-21, 15, -24), new Vector3(-16, 9, -16));
+            Debug.Log($"Previews written to {folder}");
+
+            foreach (Object item in created)
+                Object.DestroyImmediate(item);
         }
 
-        static void BuildWorld(BlockStorage storage)
+        static void BuildWorld(Landscape landscape)
         {
+            void Fill(int3 min, int3 max, ushort id) => landscape.Fill(new BoundsInt(min.x, min.y, min.z, max.x - min.x, max.y - min.y, max.z - min.z), id);
+            void Set(int x, int y, int z, ushort id) => landscape.SetBlock(new Vector3Int(x, y, z), id);
+
             for (int z = -24; z < 40; z++)
             for (int x = -24; x < 40; x++)
             {
                 int height = TerrainHeight(x, z);
-                storage.Fill(new int3(x, 0, z), new int3(x + 1, height - 3, z + 1), Stone, true);
-                storage.Fill(new int3(x, height - 3, z), new int3(x + 1, height, z + 1), Dirt, true);
-                storage.SetBlock(new int3(x, height, z), Grass, true);
+                Fill(new int3(x, 0, z), new int3(x + 1, height - 3, z + 1), Stone);
+                Fill(new int3(x, height - 3, z), new int3(x + 1, height, z + 1), Dirt);
+                Set(x, height, z, Grass);
             }
 
             // A stone platform on four pillars over flattened ground, which is lit only from the sides.
-            storage.Fill(new int3(-1, 0, -1), new int3(13, 9, 11), Dirt, true);
-            storage.Fill(new int3(-1, 9, -1), new int3(13, 10, 11), Grass, true);
-            storage.Fill(new int3(-1, 10, -1), new int3(13, 30, 11), 0, true);
-            storage.Fill(new int3(1, 16, 1), new int3(11, 17, 9), Stone, true);
+            Fill(new int3(-1, 0, -1), new int3(13, 9, 11), Dirt);
+            Fill(new int3(-1, 9, -1), new int3(13, 10, 11), Grass);
+            Fill(new int3(-1, 10, -1), new int3(13, 30, 11), 0);
+            Fill(new int3(1, 16, 1), new int3(11, 17, 9), Stone);
             foreach (int2 pillar in new[] { new int2(1, 1), new int2(10, 1), new int2(1, 8), new int2(10, 8) })
-                storage.Fill(new int3(pillar.x, 0, pillar.y), new int3(pillar.x + 1, 16, pillar.y + 1), Stone, true);
-            storage.SetBlock(new int3(8, 10, 6), WarmLamp, true);
+                Fill(new int3(pillar.x, 0, pillar.y), new int3(pillar.x + 1, 16, pillar.y + 1), Stone);
+            Set(8, 10, 6, WarmLamp);
 
             // A plain pad with a single block, a 2 × 2 block and an L: any shading on it is ambient occlusion.
-            storage.Fill(new int3(-22, 0, -22), new int3(-10, 9, -10), Chalk, true);
-            storage.Fill(new int3(-22, 9, -22), new int3(-10, 30, -10), 0, true);
-            storage.SetBlock(new int3(-19, 9, -19), Chalk, true);
-            storage.Fill(new int3(-16, 9, -19), new int3(-14, 11, -17), Chalk, true);
-            storage.Fill(new int3(-19, 9, -14), new int3(-13, 10, -13), Chalk, true);
-            storage.Fill(new int3(-19, 9, -16), new int3(-18, 10, -14), Chalk, true);
+            Fill(new int3(-22, 0, -22), new int3(-10, 9, -10), Chalk);
+            Fill(new int3(-22, 9, -22), new int3(-10, 30, -10), 0);
+            Set(-19, 9, -19, Chalk);
+            Fill(new int3(-16, 9, -19), new int3(-14, 11, -17), Chalk);
+            Fill(new int3(-19, 9, -14), new int3(-13, 10, -13), Chalk);
+            Fill(new int3(-19, 9, -16), new int3(-18, 10, -14), Chalk);
 
             // A plank house on a flattened floor, lit inside by a red and a blue lamp.
             const int floor = 9;
-            storage.Fill(new int3(13, 0, 1), new int3(23, floor + 1, 11), Stone, true);
-            storage.Fill(new int3(13, floor + 1, 1), new int3(23, 30, 11), 0, true);
-            storage.Fill(new int3(14, floor + 1, 2), new int3(21, floor + 5, 9), Planks, true);
-            storage.Fill(new int3(15, floor + 1, 3), new int3(20, floor + 4, 8), 0, true);
-            storage.Fill(new int3(17, floor + 1, 2), new int3(18, floor + 3, 3), 0, true);
-            storage.Fill(new int3(14, floor + 2, 4), new int3(15, floor + 3, 7), Glass, true);
-            storage.SetBlock(new int3(15, floor + 2, 7), RedLamp, true);
-            storage.SetBlock(new int3(19, floor + 2, 7), BlueLamp, true);
+            Fill(new int3(13, 0, 1), new int3(23, floor + 1, 11), Stone);
+            Fill(new int3(13, floor + 1, 1), new int3(23, 30, 11), 0);
+            Fill(new int3(14, floor + 1, 2), new int3(21, floor + 5, 9), Planks);
+            Fill(new int3(15, floor + 1, 3), new int3(20, floor + 4, 8), 0);
+            Fill(new int3(17, floor + 1, 2), new int3(18, floor + 3, 3), 0);
+            Fill(new int3(14, floor + 2, 4), new int3(15, floor + 3, 7), Glass);
+            Set(15, floor + 2, 7, RedLamp);
+            Set(19, floor + 2, 7, BlueLamp);
 
             // A tree with see-through leaves.
             int ground = TerrainHeight(-5, 12);
-            storage.Fill(new int3(-7, ground + 4, 10), new int3(-2, ground + 7, 15), Leaves, true);
-            storage.Fill(new int3(-5, ground + 1, 12), new int3(-4, ground + 6, 13), Log, true);
+            Fill(new int3(-7, ground + 4, 10), new int3(-2, ground + 7, 15), Leaves);
+            Fill(new int3(-5, ground + 1, 12), new int3(-4, ground + 6, 13), Log);
         }
 
         static int TerrainHeight(int x, int z) =>
             8 + (int)math.round(2.5f * math.sin(x / 6f) + 2f * math.cos(z / 7f) + math.sin((x + z) / 9f));
-
-        void SpawnSections(BlockStorage storage, BlockTable table, BlockRegistry registry)
-        {
-            Material[] materials = { registry.GetMaterial(RenderPass.Opaque), registry.GetMaterial(RenderPass.Cutout), registry.GetMaterial(RenderPass.Transparent) };
-            var settings = new BuildSettings { SmoothLighting = true, SolidBelowWorld = true };
-            using var build = new SectionBuild();
-            foreach (Column column in storage.Columns)
-            for (int sectionY = 0; sectionY < storage.SectionsPerColumn; sectionY++)
-            {
-                build.CopyInputs(storage, column.Position, sectionY);
-                build.Schedule(table, settings).Complete();
-                var mesh = new Mesh { name = $"Section {column.Position} {sectionY}" };
-                build.Apply(mesh);
-                created.Add(mesh);
-                if (mesh.vertexCount == 0)
-                    continue;
-
-                var section = new GameObject(mesh.name);
-                section.transform.position = new Vector3(column.Position.x, sectionY, column.Position.y) * Section.Size;
-                section.AddComponent<MeshFilter>().sharedMesh = mesh;
-                section.AddComponent<MeshRenderer>().sharedMaterials = materials;
-                created.Add(section);
-            }
-        }
 
         void Render(string folder, string name, Vector3 position, Vector3 target)
         {
@@ -172,6 +154,7 @@ namespace reromanlee.BlockyMesher.Tests
             created.Add(registry);
             registry.textures = CreateTextures();
             registry.ambientOcclusion = AssetDatabase.LoadAssetAtPath<Texture2DArray>(BlockRegistry.AmbientOcclusionPath);
+            registry.cracks = AssetDatabase.LoadAssetAtPath<Texture2DArray>(BlockRegistry.CracksPath);
             registry.blocks = new[]
             {
                 Block("Stone", Stone, new FaceTextures(0)),

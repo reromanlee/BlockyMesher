@@ -154,7 +154,13 @@ namespace reromanlee.BlockyMesher.Storage
                     for (int x = localMin.x; x < localMax.x; x++)
                         section.Blocks[Section.Index(x, y, z)] = id;
                 }
-                RecomputeSkyStart(column);
+
+                int2 columnOrigin = new int2(columnX, columnZ) * Section.Size;
+                int2 skyMin = math.max(min.xz - columnOrigin, 0);
+                int2 skyMax = math.min(max.xz - columnOrigin, Section.Size);
+                for (int z = skyMin.y; z < skyMax.y; z++)
+                for (int x = skyMin.x; x < skyMax.x; x++)
+                    column.SkyStart[x | (z << 4)] = (ushort)FindSkyStart(column, x, z, Height - 1);
             }
         }
 

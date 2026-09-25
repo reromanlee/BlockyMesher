@@ -50,7 +50,7 @@ namespace reromanlee.BlockyMesher.Meshing
                     int cell = Neighborhood.Index(x, y, z);
                     ushort id = Blocks[cell];
                     BlockInfo info = id < BlockInfos.Length ? BlockInfos[id] : BlockInfos[0];
-                    Flags[cell] = belowWorld ? (byte)BlockFlags.Opaque : (byte)info.Flags;
+                    Flags[cell] = belowWorld ? (byte)(BlockFlags.Opaque | BlockFlags.Collidable) : (byte)info.Flags;
                     Sky[cell] = (byte)(y >= BoxSkyStart[x + z * Neighborhood.Size] ? MaxLevel : 0);
                     BlockLight[cell] = 0;
                     if (info.Emission > 0 && !belowWorld)

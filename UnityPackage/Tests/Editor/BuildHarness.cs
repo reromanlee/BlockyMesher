@@ -51,7 +51,14 @@ namespace reromanlee.BlockyMesher.Tests
         public int VertexCount => Build.Result.vertexCount;
         public int FaceCount => VertexCount / 4;
         public IndexFormat IndexFormat => Build.Result.indexFormat;
-        public int IndexCount(RenderPass pass) => Build.Result.GetSubMesh((int)pass).indexCount;
+        /// <summary>Only passes with faces get a submesh, in pass order.</summary>
+        public int IndexCount(RenderPass pass)
+        {
+            int bit = 1 << (int)pass;
+            if ((Build.PassMask & bit) == 0)
+                return 0;
+            return Build.Result.GetSubMesh(math.countbits(Build.PassMask & (bit - 1))).indexCount;
+        }
         public SectionVertex[] Vertices => Build.Result.GetVertexData<SectionVertex>().ToArray();
 
         public int[] Indices

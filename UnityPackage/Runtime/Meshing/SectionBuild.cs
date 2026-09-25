@@ -18,9 +18,9 @@ namespace reromanlee.BlockyMesher.Meshing
 
     /// <summary>
     /// Everything one section build needs, reused from build to build. The main thread copies the
-    /// sections around the target (<see cref="CopyInputs"/>), then three jobs run one after another:
-    /// gather the neighborhood, light it, mesh it. Working on copies is what lets the landscape keep
-    /// changing while the jobs run.
+    /// sections around the target (<see cref="CopyInputs"/>), then jobs run one after another:
+    /// gather the neighborhood, light it, mesh it (and build its colliders alongside the mesh).
+    /// Working on copies is what lets the landscape keep changing while the jobs run.
     /// </summary>
     internal sealed class SectionBuild : IDisposable
     {
@@ -39,9 +39,13 @@ namespace reromanlee.BlockyMesher.Meshing
         NativeArray<byte> sky = new(Neighborhood.Volume, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         NativeArray<byte> blockLight = new(Neighborhood.Volume, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         NativeArray<ushort> queue = new(Neighborhood.Volume, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        NativeArray<int> passMask = new(1, Allocator.Persistent);
+        NativeList<BoxRange> boxes = new(Allocator.Persistent);
 
         Mesh.MeshDataArray meshData;
         bool hasMeshData;
+        Mesh.MeshDataArray collisionData;
+        bool hasCollisionData;
 
         /// <summary>Approximate native memory one build holds, for the stats.</summary>
         public const int MemoryBytes = 27 * Section.Volume * 2 + 27 * 4 + 9 * Section.Area * 2
@@ -54,6 +58,17 @@ namespace reromanlee.BlockyMesher.Meshing
 
         /// <summary>The finished mesh data, readable after <see cref="Handle"/> completes.</summary>
         internal Mesh.MeshData Result => meshData[0];
+
+        /// <summary>Which render passes the mesh has submeshes for, one bit each. Valid once complete.</summary>
+        public int PassMask => passMask[0];
+
+        public int VertexCount => meshData[0].vertexCount;
+
+        /// <summary>The colliders this build made, see <see cref="Schedule"/>.</summary>
+        public ColliderMode Colliders { get; private set; }
+
+        /// <summary>Collider boxes, for <see cref="ColliderMode.Boxes"/>. Valid once complete.</summary>
+        public NativeList<BoxRange> Boxes => boxes;
 
         public void CopyInputs(BlockStorage storage, int2 columnPosition, int sectionY)
         {
@@ -92,10 +107,11 @@ namespace reromanlee.BlockyMesher.Meshing
             }
         }
 
-        public JobHandle Schedule(BlockTable table, BuildSettings settings)
+        public JobHandle Schedule(BlockTable table, BuildSettings settings, ColliderMode colliders = ColliderMode.None)
         {
             meshData = Mesh.AllocateWritableMeshData(1);
             hasMeshData = true;
+            Colliders = colliders;
             int boxBottomY = SectionY * Section.Size - Neighborhood.Border;
 
             JobHandle gather = new GatherJob
@@ -122,7 +138,7 @@ namespace reromanlee.BlockyMesher.Meshing
                 Queue = queue,
             }.Schedule(gather);
 
-            Handle = new MeshJob
+            JobHandle mesh = new MeshJob
             {
                 Blocks = blocks,
                 Flags = flags,
@@ -133,7 +149,22 @@ namespace reromanlee.BlockyMesher.Meshing
                 LightColors = table.LightColors,
                 SmoothLighting = settings.SmoothLighting,
                 Output = meshData[0],
+                PassMask = passMask,
             }.Schedule(light);
+
+            // Colliders only read the lit neighborhood too, so they are built alongside the mesh.
+            JobHandle collision = default;
+            if (colliders == ColliderMode.Mesh)
+            {
+                collisionData = Mesh.AllocateWritableMeshData(1);
+                hasCollisionData = true;
+                collision = new CollisionMeshJob { Flags = flags, Output = collisionData[0] }.Schedule(light);
+            }
+            else if (colliders == ColliderMode.Boxes)
+            {
+                collision = new BoxMergeJob { Flags = flags, Boxes = boxes }.Schedule(light);
+            }
+            Handle = JobHandle.CombineDependencies(mesh, collision);
             return Handle;
         }
 
@@ -146,13 +177,25 @@ namespace reromanlee.BlockyMesher.Meshing
             mesh.bounds = SectionBounds;
         }
 
-        /// <summary>Waits for the jobs and throws the result away.</summary>
+        /// <summary>Moves the collision mesh of a <see cref="ColliderMode.Mesh"/> build into <paramref name="mesh"/>.</summary>
+        public void ApplyCollision(Mesh mesh)
+        {
+            Handle.Complete();
+            Mesh.ApplyAndDisposeWritableMeshData(collisionData, mesh, MeshUpdateFlags.DontRecalculateBounds | MeshUpdateFlags.DontValidateIndices);
+            hasCollisionData = false;
+            mesh.bounds = SectionBounds;
+        }
+
+        /// <summary>Waits for the jobs and throws away whatever wasn't applied.</summary>
         public void Cancel()
         {
             Handle.Complete();
             if (hasMeshData)
                 meshData.Dispose();
+            if (hasCollisionData)
+                collisionData.Dispose();
             hasMeshData = false;
+            hasCollisionData = false;
         }
 
         public void Dispose()
@@ -167,6 +210,8 @@ namespace reromanlee.BlockyMesher.Meshing
             sky.Dispose();
             blockLight.Dispose();
             queue.Dispose();
+            passMask.Dispose();
+            boxes.Dispose();
         }
 
         static void Clear(NativeArray<ushort> array, int start, int length)

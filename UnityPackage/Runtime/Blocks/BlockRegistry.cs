@@ -18,7 +18,9 @@ namespace reromanlee.BlockyMesher
         public const int MaxTextureLayers = 256;
 
         public const string ShaderName = "reromanlee/BlockyMesher/Blocks";
+        public const string CrackShaderName = "reromanlee/BlockyMesher/Crack";
         public const string AmbientOcclusionPath = "Packages/com.reromanlee.blockymesher/Runtime/Textures/BlockOcclusion.png";
+        public const string CracksPath = "Packages/com.reromanlee.blockymesher/Runtime/Textures/BlockBreaking.png";
 
         static readonly int TexturesId = Shader.PropertyToID("_Textures");
         static readonly int OcclusionId = Shader.PropertyToID("_Occlusion");
@@ -39,7 +41,14 @@ namespace reromanlee.BlockyMesher
         [Tooltip("The prebaked ambient occlusion tiles. Filled in automatically.")]
         public Texture2DArray ambientOcclusion;
 
+        [Tooltip("The shader of the block crack overlay. Filled in automatically.")]
+        public Shader crackShader;
+
+        [Tooltip("Crack stages, lightest first, as a 2D array. Filled in automatically.")]
+        public Texture2DArray cracks;
+
         Material[] materials;
+        readonly Material[][] materialsByPasses = new Material[8][];
 
         /// <summary>Lists everything that would make blocks render or save incorrectly. Empty when valid.</summary>
         public List<string> Validate()
@@ -138,6 +147,21 @@ namespace reromanlee.BlockyMesher
             return materials[(int)pass];
         }
 
+        /// <summary>Materials for a mesh whose submeshes are the passes in <paramref name="passMask"/>, in pass order.</summary>
+        internal Material[] GetMaterials(int passMask)
+        {
+            if (materials == null)
+                CreateMaterials();
+            if (materialsByPasses[passMask] == null)
+            {
+                var list = new List<Material>();
+                for (int pass = 0; pass < materials.Length; pass++)
+                    if ((passMask & (1 << pass)) != 0) list.Add(materials[pass]);
+                materialsByPasses[passMask] = list.ToArray();
+            }
+            return materialsByPasses[passMask];
+        }
+
         void CreateMaterials()
         {
             if (shader == null)
@@ -193,8 +217,12 @@ namespace reromanlee.BlockyMesher
 #if UNITY_EDITOR
             if (shader == null)
                 shader = Shader.Find(ShaderName);
+            if (crackShader == null)
+                crackShader = Shader.Find(CrackShaderName);
             if (ambientOcclusion == null)
                 ambientOcclusion = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2DArray>(AmbientOcclusionPath);
+            if (cracks == null)
+                cracks = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2DArray>(CracksPath);
 #endif
             ApplyTextures();
         }
@@ -209,6 +237,7 @@ namespace reromanlee.BlockyMesher
                 else DestroyImmediate(material);
             }
             materials = null;
+            System.Array.Clear(materialsByPasses, 0, materialsByPasses.Length);
         }
 
         static uint Pack(Color color)
