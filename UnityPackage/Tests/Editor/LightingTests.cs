@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using reromanlee.BlockyMesher.Meshing;
 using Unity.Mathematics;
+using UnityEngine;
 using static reromanlee.BlockyMesher.Tests.TestBlocks;
 
 namespace reromanlee.BlockyMesher.Tests
@@ -99,6 +100,31 @@ namespace reromanlee.BlockyMesher.Tests
             Assert.AreEqual(2, world.BlockLightAt(6, 3, 3), "red reaches 5 blocks away at level 2");
             Assert.AreEqual(red, world.LightColorAt(6, 3, 3));
             Assert.AreEqual(0, world.SkyAt(7, 3, 3), "the room is sealed from the sky");
+        }
+
+        [Test]
+        public void FacesSharingACornerLightItAlikeWhereColorsMeet()
+        {
+            // Red reaches x = 7 at level 3 and blue reaches x = 8 at level 3: the two meet in a tie.
+            world.Fill(new int3(0, 0, 0), new int3(16, 1, 16), Stone);
+            world.Set(3, 1, 8, RedLamp);
+            world.Set(10, 1, 8, BlueLamp);
+            world.Run();
+            Assert.AreEqual(3, world.BlockLightAt(7, 1, 8));
+            Assert.AreEqual(3, world.BlockLightAt(8, 1, 8));
+
+            var corners = new Dictionary<int3, Color32>();
+            foreach (SectionVertex[] face in world.FacesAt(v => v.Y == 1))
+            foreach (SectionVertex corner in face)
+            {
+                var position = new int3(corner.X, corner.Y, corner.Z);
+                if (corners.TryGetValue(position, out Color32 other))
+                    Assert.AreEqual(other, corner.BlockLight, $"floor faces disagree on the light at ({position.x}, {position.z})");
+                else
+                    corners.Add(position, corner.BlockLight);
+            }
+            Color32 meeting = corners[new int3(8, 1, 8)];
+            Assert.That(meeting.r > 0 && meeting.b > 0, $"red and blue mix where they meet, got {meeting}");
         }
 
         [Test]
