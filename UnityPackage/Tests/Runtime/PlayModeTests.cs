@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -36,6 +37,40 @@ namespace reromanlee.BlockyMesher.Tests
                 Object.Destroy(registry);
                 Object.Destroy(stone);
             }
+        }
+
+        /// <summary>
+        /// Made in Edit Mode, before the test runner enters Play Mode, so it goes through the same
+        /// script reload as a registry in an open scene when someone presses Play.
+        /// </summary>
+        sealed class RegistryFromEditMode : IPrebuildSetup
+        {
+            public const string Name = "Registry from Edit Mode";
+
+            public void Setup()
+            {
+                var registry = ScriptableObject.CreateInstance<BlockRegistry>();
+                registry.name = Name;
+                registry.hideFlags = HideFlags.DontSave;
+            }
+        }
+
+        [UnityTest, PrebuildSetup(typeof(RegistryFromEditMode))]
+        public IEnumerator MaterialsSurviveEnteringPlayMode()
+        {
+            BlockRegistry registry = Resources.FindObjectsOfTypeAll<BlockRegistry>().FirstOrDefault(r => r.name == RegistryFromEditMode.Name);
+            Assume.That(registry, Is.Not.Null, "The registry only outlives the reload in the editor.");
+            try
+            {
+                Material[] materials = registry.GetMaterials(0b011);
+                Assert.AreEqual(2, materials.Length);
+                Assert.IsTrue(materials.All(material => material != null));
+            }
+            finally
+            {
+                Object.Destroy(registry);
+            }
+            yield return null;
         }
     }
 }
